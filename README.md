@@ -1,1 +1,57 @@
-# linux-audit-scripts
+# kpnixaudit #
+
+This script is used by KirkpatrickPrice auditors to collect information from Linux hosts.  Unlike many other tools out there, the approach used in this script is "keep it lite":
+* Use only commands that are already built into the operating system (no Python, Perl, jq, etc required)
+* In addition to built-in OS commands, only use commands that will only be present if the software that we're auditiing is installed -- e.g. 
+    * Docker ==> `docker ps`
+    * Kubernetes ==> `kubectl`
+* Minimal real-time analysis -- we collect data for off-line analysis and don't report findings during data collection.
+* Fail quietly -- If a command isn't found or the piece of software isn't installed, note that in the output and keep going
+
+## Critical dependencies ##
+* Shell: Bash
+* Package managers: Combinations of dpkg, rpm, yum and apt
+* Service management: systemctl, service, chkconfig
+* Hardened kernel: SELinux or AppArmor
+* Misc. commands:   find, which, "echo -e", awk, uname, sysctl, grep, useradd, head, tail, netstat, initctl, launchctl
+* Module-specific commands: docker, kubectl, etc.  if installed
+
+The script has been tested against currently-supported distributions of:
+* Ubuntu -- 16.04LTS, 18.04LTS and 20.04LTS
+* RHEL and CentOS -- version 7.x and 8.x
+* Amazon Linux -- Versions 1 and 2
+
+It will also likely run well on any other RPM- or DEB-based distribution that supports the dependencies above.
+
+## Installation
+Installation is as simple as copying or cloning the bash script to your system.
+
+`git clone https://github.com/kirkpatrickprice/linux-audit-script`
+
+or click on the script and download the raw file.
+
+## Usage and Results
+```
+USAGE:
+        kpnixaudit.sh [ -cdhw ] [-m module ...]
+        Options:
+            -c      Print DumpCmd errors messages to STDERR instead of redirecting them to /dev/null
+            -d      Print DEBUG messages to STDOUT and to REPORT_NAME
+            -m      Select modules to run.  Use -m multiple times to select more than one module
+                    If not used, all modules will be run.  If used, only the selected modules will be
+                    run.  To run all modules except for WorldFiles, use the -w switch.  Module names
+                    are CaSe SeNsItIvE.
+                    Valid modules: System Network Security Logging Users K8sMaster K8sWorker Docker WorldFiles
+            -w      Disable the WorldFiles module (this check can take a long time on systems
+                    with lots of network-attached storage such as NFS mounts).
+            -h      this help
+
+        NOTE: This script must be run as ROOT
+```
+The most common usage is:
+`sudo ./kpnixaudit.sh`
+
+Although your auditor may ask you to run only certain modules (e.g.):
+`sudo ./kpnixaudit.sh -m System -m Security`
+
+The end result is a text file named as `hostname.txt`.  Your auditor will ask you to upload all of the files from the identified sample as a ZIP (or tarball, etc) to the Online Audit Manager portal.
