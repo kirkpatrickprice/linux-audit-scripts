@@ -3,18 +3,19 @@
 This script is used by KirkpatrickPrice auditors to collect information from Linux hosts.  Unlike many other tools out there, the approach used in this script is "keep it lite":
 * Use only commands that are already built into the operating system (no Python, Perl, jq, etc required)
 * In addition to built-in OS commands, only use commands that will only be present if the software that we're auditiing is installed -- e.g. 
-    * Docker ==> `docker ps`
+    * Docker ==> `docker`
     * Kubernetes ==> `kubectl`
+    * Tripwire ==> `twadmin`
 * Minimal real-time analysis -- we collect data for off-line analysis and don't report findings during data collection.
 * Fail quietly -- If a command isn't found or the piece of software isn't installed, note that in the output and keep going
 
 ## Critical dependencies ##
-* Shell: Bash
-* Package managers: Combinations of dpkg, rpm, yum and apt
-* Service management: systemctl, service, chkconfig
-* Hardened kernel: SELinux or AppArmor
-* Misc. commands:   find, which, "echo -e", awk, uname, sysctl, grep, useradd, head, tail, netstat, initctl, launchctl
-* Module-specific commands: docker, kubectl, etc.  if installed
+* Shell: `bash`
+* Package managers: Combinations of `dpkg rpm yum apt`
+* Service management: `systemctl service chkconfig`
+* Hardened kernel: `seinux` or `apparmor`
+* Misc. commands:   `find which, echo, awk, uname, sysctl, grep, useradd, head, tail, netstat, initctl, launchctl`
+* Product-specific commands: `docker kubectl` etc.  if installed
 
 The script has been tested against currently-supported distributions of:
 * Ubuntu -- 16.04LTS, 18.04LTS and 20.04LTS
