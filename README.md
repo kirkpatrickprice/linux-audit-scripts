@@ -13,7 +13,7 @@ This script is used by KirkpatrickPrice auditors to collect information from Lin
 * Shell: `bash`
 * Package managers: Combinations of `dpkg` `rpm` `yum` `apt`
 * Service management: `systemctl` `service` `chkconfig`
-* Hardened kernel: `seinux` or `apparmor`
+* Hardened kernel: `selinux` or `apparmor`
 * Misc. commands:   `find` `which` `echo` `awk` `uname` `sysctl` `grep` `useradd` `head` `tail` `netstat` `initctl` `launchctl`
 * Product-specific commands: `docker` `kubectl` etc.  if installed
 
