@@ -6,7 +6,7 @@ This script is used by KirkpatrickPrice auditors to collect information from Lin
     * Docker ==> `docker`
     * Kubernetes ==> `kubectl`
     * Tripwire ==> `twadmin`
-* Minimal real-time analysis -- we collect data for off-line analysis and don't report findings during data collection.
+* Minimal real-time analysis -- we collect data for off-line analysis and don't report findings during data collection.  This keeps the dependencies to a minimum and the logic simple, especially important for running the script on production machines.
 * Fail quietly -- If a command isn't found or the piece of software isn't installed, note that in the output and keep going
 
 ## Critical dependencies ##
@@ -25,7 +25,7 @@ The script has been tested against currently-supported distributions of:
 It will also likely run well on any other RPM- or DEB-based distribution that supports the dependencies above.
 
 ## Installation
-Installation is as simple as copying or cloning the bash script to your system.
+Installation is as simple as copying or cloning the Bash script to your system.
 
 `git clone https://github.com/kirkpatrickprice/linux-audit-script`
 
