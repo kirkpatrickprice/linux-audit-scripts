@@ -83,8 +83,10 @@
 #   - Implemented the ability to run specific modules using the -m switch
 #   - Changed dumpcmd to use a much simpler (at least to read) awk-based method of dumping the results to the report file
 #   - Collect SNAPS info, in case they're being used on Ubuntu (System_Snaps)
+# Version 0.6.1
+#   - Collect package install dates for RPM- and Debian-based systems (System_PackageInstalledSoftware)
 
-KPNIXVERSION="0.6.0"
+KPNIXVERSION="0.6.1"
 
 function usage () {
     echo "
@@ -253,6 +255,67 @@ function dumpcmd () {
         comment "$COMMAND_ROOT command not found."
     fi
 }
+
+function dumpgrep () {
+    #Using grep/zgrep, dump lines matching $1 in files matching fileglob in $2
+    #Parameters:
+    #   $1 - Regex to use for matching
+    #   $2 - Path to start from -- do NOT include the trailing "/"
+    #   $3 - Filespec to match against (e.g. *.conf) / requires regex syntax as this is used by 'find -iname <filespec>'
+    #   $4 - Optional MAXDEPTH / assume 1 if none provided
+    #       - "0" will only search the starting point passed in $1 / it won't find any files matched in $2 / DO NOT USE
+    #       - "1" will search the current <path> in $1 but not recurse any directories
+    #       - "2" will search the current path in $1 plus one more level of directies under that...
+    #       - "3" and so on... 
+
+    local FILE
+    local PATTERN=$1
+    local SEARCHPATH=$2
+    local FILESPEC=$3
+
+    if [ -n "$4" ]; then
+        #If provided, set MAXDEPTH to $3
+        local MAXDEPTH="$4"
+    else
+        #If not provided, assume MAXDEPTH is 1 (see function comments above for interpretation)
+        local MAXDEPTH="1"
+    fi
+
+    debug "DumpGrep: Pattern:\"$PATTERN\" PATH:$SEARCHPATH FILESPEC:\"$FILESPEC\" DEPTH:$MAXDEPTH"
+
+    for FILE in $(find -L $SEARCHPATH -maxdepth $MAXDEPTH -type f -iname "$FILESPEC" | sort); do
+        case $FILE in
+            *.gz ) 
+                local CMD="zgrep"
+                ;;
+            * )
+                local CMD="grep"
+                ;;
+        esac
+
+        comment "Running: $CMD \"$PATTERN\" $FILE"
+        debug "Running: $CMD \"$PATTERN\" $FILE"
+        
+        local COMMAND_ROOT="$(echo -e "$CMD" | awk '{ print $1 }')"
+        local COMMAND_PATH="$(which $COMMAND_ROOT 2> /dev/null)"
+        
+        debug "DumpCmd: $COMMAND_ROOT==>$COMMAND_PATH"
+
+        if [ -n "$COMMAND_PATH" ]; then
+            if [ $DEBUGCMD = 0 ]; then 
+                local RESULTS="$($CMD "$PATTERN" "$FILE" 2> /dev/null)"
+            else
+                local RESULTS="$($CMD "$PATTERN" "$FILE")"
+            fi
+
+            echo "$RESULTS" | awk -v vSECTION=$SECTION -v vFILE=$FILE '{ printf "%s::%s::%s\n",vSECTION,vFILE,$0; }' >> $REPORT_NAME
+
+        else
+            comment "$COMMAND_ROOT command not found."
+        fi
+    done
+}
+
 
 function svcstatus () {
     #Determine the correct method of reporting daemon status.  Prefer "systemctl is-enabled <service_name>" but fall back to "service <service_name> status" is systemctl is not available.
@@ -483,9 +546,12 @@ function System {
 
     header "${FUNCNAME}_PackageInstalledSoftware" "Background"
         comment "RPM installed packages (common for Redhat-based systems)"
-            dumpcmd "rpm -qa"
+            dumpcmd "rpm -qa --last"
         comment "DPKG installed packages (common for Ubuntu systems)"
+        comment "dpkg keeps a log of its activity in /var/log/dpkg.log, which is subject to LogRotate.  We'll grab the install"
+        comment "activity for as far as logrotate keeps it on the local system."
             dumpcmd "dpkg --get-selections"
+            dumpgrep "status installed" "/var/log" "dpkg.log*"
     footer
 
     header "${FUNCNAME}_PackageManagerConfigs" "1.2.1 1.2.2 1.2.3"
