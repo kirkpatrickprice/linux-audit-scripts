@@ -950,6 +950,8 @@ function Users {
 }
 
 function K8s {
+    debug "Kube user config: $KUBEUSERCONFIG"
+    debug "kubectl command line: $KUBECTL"
 
     header "${FUNCNAME}_Background" "Background"
         comment "The K8s section is broken down as follows:"
@@ -1550,12 +1552,12 @@ declare -A SELECTED                                                             
 REPORT_NAME=$(hostname).txt                                                             # Where to write the report to
 START_DIR=$(pwd)
 RUNLIST=()                                                                              # An array to hold the list of modules to run
-if [ -n "KUBECONFIG" ]; then
-# If the KUBECONFIG shell variable exists, use that
-    KUBEUSERCONFIG=$KUBECONFIG
-else
-# otherwise, use the the user's default kube config file location
-    KUBEUSERCONFIG="${HOME}/.kube/config"                                                   # Default location of the Kubernetes user config for $KUBECTL
+if [ -f "${HOME}/.kube/config" ]; then 
+# If the user's .kube/config file exists, use that
+    KUBEUSERCONFIG="${HOME}/.kube/config"
+else 
+# otherwise, try the /etc/kubernetes/admin.conf file.  If this doesn't exist, we'll prompt the user for it later
+    KUBEUSERCONFIG="/etc/kubernetes/admin.conf"
 fi
 
 #Check if running as ROOT / display help and exit if not
@@ -1621,8 +1623,7 @@ fi
 
 # Check if K8sMaster has been selected and check for the KUBEUSERCONFIG file.  If it doesn't exist, prompt the user for one
 if [ ${SELECTED[K8sMaster]} -eq 1 ]; then 
-    debug "Kube user config: $KUBEUSERCONFIG"
-    KUBECTL="kubectl"
+    KUBECTL="kubectl --kubeconfig $KUBEUSERCONFIG"
     while [ ! -f "$KUBEUSERCONFIG" -a "$KUBEUSERCONFIG" != "none" ]; do
         echo "$KUBEUSERCONFIG does not exist."
         read -p "Provide a path to a Kube user config file to use (or 'none' to disable Kubernetes Master checks): " KUBEUSERCONFIG
