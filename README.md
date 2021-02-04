@@ -29,6 +29,10 @@ Installation is as simple as copying or cloning the Bash script to your system.
 
 `git clone https://github.com/kirkpatrickprice/linux-audit-script`
 
+or using wget:
+
+`wget https://raw.githubusercontent.com/kirkpatrickprice/linux-audit-scripts/main/kpnixaudit.sh`
+
 or click on the script and download the raw file.
 
 ## Usage and Results
