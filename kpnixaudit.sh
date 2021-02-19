@@ -85,8 +85,11 @@
 #   - Collect SNAPS info, in case they're being used on Ubuntu (System_Snaps)
 # Version 0.6.1
 #   - Collect package install dates for RPM- and Debian-based systems (System_PackageInstalledSoftware)
+# Version 0.6.2
+#   - Collect /etc/pwquality.conf.d/* in addition to /etc/pwquality.conf
+#   - Collect /etc/sssd configuration files and directories
 
-KPNIXVERSION="0.6.1"
+KPNIXVERSION="0.6.2"
 
 function usage () {
     echo "
@@ -762,6 +765,7 @@ function Security {
     footer
 
     header "${FUNCNAME}_HidsOSSECConfig" "Background"
+        comment "The ossec.conf file is valid for both the OSSEC agent and the Wuzah agent"
         dumpfile "/var/ossec/etc" "ossec.conf"
         #Look for "ossec.conf" in /etc and in first-level sub-directories (e.g. /etc/ossec/ossec.conf but not /etc/xxx/yyy/ossec.conf)
         dumpfile "/etc" "ossec.conf" "2"
@@ -896,6 +900,11 @@ function Logging {
 }
 
 function Users {
+    header "${FUNCNAME}_SSSDConfig"
+        comment "SSSD consists of a set of Linux authentication daemons  that can be used to integrate with remote directory services (e.g. Active Directory) or other authencation systems."
+        dumpfile "/etc/sssd" "*" "2"
+    footer
+    
     header "${FUNCNAME}_BlankPasswd" "Background"
         dumpcmd "awk -F: '($2 == "") {print}' /etc/shadow"
     footer
@@ -911,6 +920,7 @@ function Users {
         comment "Password Quality for RPM-based systems.  Debian-based systems like"
         comment "Ubuntu will be captured in the Users_PAMConfig section further on."
             dumpfile "/etc/security" "pwquality.conf"
+            dumpfile "/etc/security/pwquality.conf.d" "*"
     footer
 
     header "${FUNCNAME}_etcpasswdContents" "5.4"
