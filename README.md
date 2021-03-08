@@ -59,4 +59,4 @@ The most common usage is:
 Although your auditor may ask you to run only certain modules (e.g.):
 `sudo ./kpnixaudit.sh -m System -m Security`
 
-The end result is a text file named as `hostname.txt`.  Your auditor will ask you to upload all of the files from the identified sample as a ZIP (or tarball, etc) to the Online Audit Manager portal.
+The end result is a text file named as `hostname.txt`.  Your auditor will ask you to upload all of the files from the identified sample as a ZIP to the Online Audit Manager portal.
