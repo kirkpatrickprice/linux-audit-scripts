@@ -16,7 +16,7 @@
 
 # KirkpatrickPrice *nix Audit Script
 # Author: Randy Bartels (original version by Michael Fowl)
-# Usage example: "bash ./kpnixaudit.sh" to audit common configs and setting on *nix environments.  Developed and
+# Usage example: "sudo ./kpnixaudit.sh" to audit common configs and setting on *nix environments.  Developed and
 # tested against CentOS/RHEL 7 and 8, Amazon Linux 1 and 2 and Ubuntu 1804 and 2004 distributions, but should work
 # reasonably well on similar distributions as long it supports any of the following:
 # Critical dependencies:
@@ -672,14 +672,14 @@ function Network {
             dumpcmd "sshd -T"
         comment "OpenSSH /etc/sshd_config Contents:"
             dumpfile "/etc/ssh" "sshd_config"
-            dumpfile "/etc/ssh/sshd_config.d" *
+            dumpfile "/etc/ssh/sshd_config.d" "*"
     footer
 
     header "${FUNCNAME}_OpenSSHClientConfig" "5.2.4 through 5.2.23"
         comment "The site-wide client SSH configurations are used when an SSH sessions is initiated from this systems -- e.g. if this server is jumpbox used to connect to other systems."
         comment "NOTE: Users may also have a ~/.ssh/ssh_config file which might override some of these settings."
             dumpfile "/etc/ssh" "ssh_config"
-            dumpfile "/etc/ssh/ssh_config.d" *
+            dumpfile "/etc/ssh/ssh_config.d" "*"
     footer
 
     header "${FUNCNAME}_RouteTable" "Background"
