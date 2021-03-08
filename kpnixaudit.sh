@@ -88,8 +88,12 @@
 # Version 0.6.2
 #   - Collect /etc/pwquality.conf.d/* in addition to /etc/pwquality.conf
 #   - Collect /etc/sssd configuration files and directories
+# Version 0.6.3
+#   - Renamed "Network_OpenSSHsshdonfig" to "Network_OpenSSHServerConfig" to be consistent with "Client" vs "Server" sections
+#   - Collect site-wide ssh_config client configuration files
 
-KPNIXVERSION="0.6.2"
+
+KPNIXVERSION="0.6.3"
 
 function usage () {
     echo "
@@ -660,7 +664,7 @@ function Network {
         dumpcmd "stat /etc/ssh/sshd_config /etc/ssh/*_key /etc/ssh/*.pub"
     footer
 
-    header "${FUNCNAME}_OpenSSHsshdconfig" "5.2.4 through 5.2.23"
+    header "${FUNCNAME}_OpenSSHServerConfig" "5.2.4 through 5.2.23"
         comment "These two methods will show similar information.  The first group will show the effect of the current configuration"
         comment "including the various defaults as applied.  The second method provides the entire sshd_config file, including"
         comment "comments, overridden values, etc."
@@ -668,6 +672,14 @@ function Network {
             dumpcmd "sshd -T"
         comment "OpenSSH /etc/sshd_config Contents:"
             dumpfile "/etc/ssh" "sshd_config"
+            dumpfile "/etc/sshd_config.d" *
+    footer
+
+    header "${FUNCNAME}_OpenSSHClientConfig" "5.2.4 through 5.2.23"
+        comment "The site-wide client SSH configurations are used when an SSH sessions is initiated from this systems -- e.g. if this server is jumpbox used to connect to other systems."
+        comment "NOTE: Users may also have a ~/.ssh/ssh_config file which might override some of these settings."
+            dumpfile "/etc/ssh" "ssh_config"
+            dumpfile "/etc/ssh_config.d" *
     footer
 
     header "${FUNCNAME}_RouteTable" "Background"
@@ -941,6 +953,8 @@ function Users {
     footer
 
     header "${FUNCNAME}_PAMConfig" "5.3"
+        comment "An excellent source of PAM documentation is from the PAM project itself.  There are also reference guides available for each PAM module in the default set."
+        comment "http://linux-pam.org/Linux-PAM-html/Linux-PAM_SAG.html"
         dumpfile "/etc" "pam.conf"
         dumpfile "/etc/pam.d" "*"
     footer
