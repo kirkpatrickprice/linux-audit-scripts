@@ -91,9 +91,11 @@
 # Version 0.6.3
 #   - Renamed "Network_OpenSSHsshdonfig" to "Network_OpenSSHServerConfig" to be consistent with "Client" vs "Server" sections
 #   - Collect site-wide ssh_config client configuration files
+# Version 0.6.4
+#   - Collect /etc/subuid and /etc/subgid files to assist with Docker user namespace configurations (Users_SubuidSubgid)
 
 
-KPNIXVERSION="0.6.3"
+KPNIXVERSION="0.6.4"
 
 function usage () {
     echo "
@@ -970,6 +972,14 @@ function Users {
         for n in $(awk -F ":" '{print $1}' /etc/passwd); do
             dumpcmd "passwd -S $n"
         done
+    footer
+
+    header "${FUNCNAME}_SubuidSubgid"
+        comment "/etc/subuid and /etc/subgid are useful especially if the host is a Docker host with user namespaces enabled.  Check the /etc/docker/daemon.json file to see if this is the case."
+        comment "There might be other places where this is useful.  For instance, if the Running Process List section shows numbers in field one instead of names, you might be able to map them"
+        comment "back to the real user using the /etc/subuid file.  Reference the man subuid help page for additional information"
+        dumpfile "/etc" "subuid"
+        dumpfile "/etc" "subgid"
     footer
 }
 
