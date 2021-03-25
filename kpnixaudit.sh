@@ -93,9 +93,14 @@
 #   - Collect site-wide ssh_config client configuration files
 # Version 0.6.4
 #   - Collect /etc/subuid and /etc/subgid files to assist with Docker user namespace configurations (Users_SubuidSubgid)
+# Version 0.6.5
+#   - Also collect file system mounts using systemctl list-units --all --type=mount (System_FSMounts)
+#   - Collect Samba configuration (Network_Shares)
+#   - Report auditd service status (Logging_AuditdStatus)
+#   - Get the Name Service Switch configuration (Network_NSSwitchConfig)
 
 
-KPNIXVERSION="0.6.4"
+KPNIXVERSION="0.6.5"
 
 function usage () {
     echo "
@@ -462,7 +467,7 @@ function System {
     header "${FUNCNAME}_FSMounts" "1.1.2 through 1.1.20"
         dumpcmd "mount"
         dumpfile "/etc" "fstab"
-        dumpcmd "systemctl is-enabled tmp.mount"
+        dumpcmd "systemctl list-units --all --type=mount"
     footer
 
     header "${FUNCNAME}_FSModules" "1.1.1.x"
@@ -662,6 +667,13 @@ function Network {
             dumpcmd "sockstat -l"
     footer
 
+    header "${FUNCNAME}_NSSwitchConfig" "Background"
+        comment "The Name Service Switch is involved in requests for nearly anything that needs to be looked up: host names, DNS names, service ports, users, groups, network protocols, etc"
+        comment "The NSS is responsible for receiving requests from various applications and services and for passing those requests to the appropriate, system administrator-defined source."
+        comment "For instance, by default, a request from a web browser for a URL will first be passed to the /etc/hosts file and then to DNS."
+        dumpfile "/etc" "nsswitch.conf"
+    footer
+    
     header "${FUNCNAME}_OpenSSHPermissions" "5.2.1 5.2.2 5.2.3"
         dumpcmd "stat /etc/ssh/sshd_config /etc/ssh/*_key /etc/ssh/*.pub"
     footer
@@ -689,8 +701,8 @@ function Network {
     footer
 
     header "${FUNCNAME}_ServiceInfo" "2.x"
-        dumpcmd "chkconfig --list"
         dumpcmd "systemctl list-unit-files"
+        dumpcmd "chkconfig --list"
         dumpcmd "initctl list"
         dumpcmd "service -e"
         dumpcmd "launchctl list"
@@ -701,6 +713,7 @@ function Network {
     header "${FUNCNAME}_Shares" "2.2.7"
         dumpfile "/etc" "exports"
         dumpfile "/etc/dfs" "dfstab"
+        dumpfile "/etc/samba/smb.conf"
         dumpfile "/etc/dfs" "sharetab"
         dumpfile "/etc" "hosts" "2"
     footer
@@ -847,6 +860,10 @@ function Security {
 }
 
 function Logging {
+    header "${FUNCNAME}_AuditdStatus" "Background"
+        svcstatus "auditd"
+    footer
+    
     header "${FUNCNAME}_AuditdConfig" "4.1"
         dumpfile "/etc/audit" "*"    
     footer
@@ -915,7 +932,7 @@ function Logging {
 
 function Users {
     header "${FUNCNAME}_SSSDConfig"
-        comment "SSSD consists of a set of Linux authentication daemons  that can be used to integrate with remote directory services (e.g. Active Directory) or other authencation systems."
+        comment "SSSD consists of a set of Linux authentication daemons that can be used to integrate with remote directory services (e.g. Active Directory) or other authencation systems."
         dumpfile "/etc/sssd" "*" "2"
     footer
     
@@ -941,7 +958,7 @@ function Users {
         dumpfile "/etc" "passwd"
     footer
 
-    header "${FUNCNAME}_etcgroupsContents" "5.4"
+    header "${FUNCNAME}_etcgroupContents" "5.4"
         dumpfile "/etc" "group"
     footer
 
