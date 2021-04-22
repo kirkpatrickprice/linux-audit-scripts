@@ -98,9 +98,14 @@
 #   - Collect Samba configuration (Network_Shares)
 #   - Report auditd service status (Logging_AuditdStatus)
 #   - Get the Name Service Switch configuration (Network_NSSwitchConfig)
+# Version 0.6.6
+#   - Collect /etc/ssh/moduli file to demonstrate secure SSH KEX settings such as when diffie-hellman-group-exchange-sha256 is enabled
+#   - Look for /etc/*/smb.conf instead of a hard-coded location
+#   - Look for /etc/*/*/modsecurity.conf instead of a hard-coded location
+#   - Look for /etc/*/*/sssd.conf instead of a hard-coded located
 
 
-KPNIXVERSION="0.6.5"
+KPNIXVERSION="0.6.6"
 
 function usage () {
     echo "
@@ -696,6 +701,13 @@ function Network {
             dumpfile "/etc/ssh/ssh_config.d" "*"
     footer
 
+    header "${FUNCNAME}_OpenSSHModuli" "5.2.4 through 5.2.23"
+        comment "The /etc/ssh/moduli file contains the moduli used by the SSH server, especially when the key exchange"
+        comment "details are not explicitly negotiated such as when diffie-hellman-group-exchange-sha256 is enabled in"
+        comment "/etc/ssh/sshd_config.  We redact the modulus from the results."
+        redactfile "/etc/ssh/moduli" "[A-Z0-9]{5,}$" "<MODULUS REDACTED>"
+    footer
+    
     header "${FUNCNAME}_RouteTable" "Background"
         dumpcmd "netstat -r"
     footer
@@ -712,8 +724,8 @@ function Network {
 
     header "${FUNCNAME}_Shares" "2.2.7"
         dumpfile "/etc" "exports"
+        dumpfile "/etc" "smb.conf" "2"
         dumpfile "/etc/dfs" "dfstab"
-        dumpfile "/etc/samba/smb.conf"
         dumpfile "/etc/dfs" "sharetab"
         dumpfile "/etc" "hosts" "2"
     footer
@@ -751,8 +763,7 @@ function Network {
     footer
 
     header "${FUNCNAME}_WebserverApacheModSecurityInfo" "Background"
-        dumpfile "/etc/modsecurity" "modsecurity.conf"
-        dumpfile "/etc/apache2/mods-enabled" "modsecurity.conf"
+        dumpfile "/etc" "modsecurity.conf" "3"
     footer
 
     header "${FUNCNAME}_WebserverNginxConfig" "2.2.10"
@@ -933,7 +944,7 @@ function Logging {
 function Users {
     header "${FUNCNAME}_SSSDConfig"
         comment "SSSD consists of a set of Linux authentication daemons that can be used to integrate with remote directory services (e.g. Active Directory) or other authencation systems."
-        dumpfile "/etc/sssd" "*" "2"
+        dumpfile "/etc" "sssd.conf" "3"
     footer
     
     header "${FUNCNAME}_BlankPasswd" "Background"
