@@ -103,9 +103,11 @@
 #   - Look for /etc/*/smb.conf instead of a hard-coded location
 #   - Look for /etc/*/*/modsecurity.conf instead of a hard-coded location
 #   - Look for /etc/*/*/sssd.conf instead of a hard-coded located
+# Version 0.6.7
+#   - Collect /etc/apt/apt.conf.d/* files as part of System_PackageManagerConfigs
 
 
-KPNIXVERSION="0.6.6"
+KPNIXVERSION="0.6.7"
 
 function usage () {
     echo "
@@ -577,6 +579,7 @@ function System {
         comment "Repo configurations"
             dumpfile "/etc" "yum.conf"
             dumpfile "/etc/apt" "sources.list"
+            dumpfile "/etc/apt/apt.conf.d" "*"
         comment "GPG configurations"
             dumpcmd "rpm -qa --scripts  gpg-pubkey* --qf '%{Version}-%{Release}  %{Packager}\n'"
             dumpcmd "grep ^gpgcheck /etc/yum.conf /etc/yum.repos.d/*"
