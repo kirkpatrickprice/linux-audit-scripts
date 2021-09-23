@@ -108,6 +108,7 @@
 # Version 0.6.8
 #   - Fixed issue in Logging_SyslogLogrorateConfig where it missed files in the /etc/logrotate.d directory
 #   - Improved IPTables collection by listing rules from FILTER, NAT and MANGLE tables (only FILTER was collected previously)
+#   - Added check to list all users with an ~/.ssh/authorized_keys file (Network_OpenSSHUserAuthKeys)
 
 
 
@@ -721,6 +722,12 @@ function Network {
         redactfile "/etc/ssh/moduli" "[A-Z0-9]{5,}$" "<MODULUS REDACTED>"
     footer
     
+    header "${FUNCNAME}_OpenSSHUserAuthKeys" "Background"
+        comment "The presence of a user's .ssh/authorized_keys file indicates the potential to login via SSH.  This would override the LOCKED status results of the Users_UserStatus check later in the script."
+        dumpcmd "ls -1 /home/*/.ssh/authorized_keys"
+    footer
+
+
     header "${FUNCNAME}_RouteTable" "Background"
         dumpcmd "netstat -r"
     footer
