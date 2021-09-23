@@ -105,9 +105,13 @@
 #   - Look for /etc/*/*/sssd.conf instead of a hard-coded located
 # Version 0.6.7
 #   - Collect /etc/apt/apt.conf.d/* files as part of System_PackageManagerConfigs
+# Version 0.6.8
+#   - Fixed issue in Logging_SyslogLogrorateConfig where it missed files in the /etc/logrotate.d directory
+#   - Improved IPTables collection by listing rules from FILTER, NAT and MANGLE tables (only FILTER was collected previously)
 
 
-KPNIXVERSION="0.6.7"
+
+KPNIXVERSION="0.6.8"
 
 function usage () {
     echo "
@@ -631,7 +635,13 @@ function Network {
     footer
 
     header "${FUNCNAME}_FirewallIPTables" "3.5"
-        dumpcmd "iptables -L -n -v"
+        comment "IPTables uses several different tables to achieve different effects on network traffic passing through it."
+        comment "We will grab the FILTER, NAT and MANGLE tables.  Review the man page for iptables or online documentation for more info."
+        TABLES=( filter nat mangle )
+        for t in "${TABLES[@]}"; do
+            SECTION="${FUNCNAME}_FirewallIPTables$t"
+            dumpcmd "iptables -t $t -L -n -v"
+        done
     footer
 
     header "${FUNCNAME}_FirewallUFW" "3.5"
@@ -929,7 +939,7 @@ function Logging {
 
     header "${FUNCNAME}_SyslogLogrotateConfig" "4.3"
         dumpfile "/etc" "logrotate.conf"
-        dumpfile "/etc/logrotate.d" "*.conf"
+        dumpfile "/etc/logrotate.d" "*"
     footer
 
     header "${FUNCNAME}_Samples" "Background"
