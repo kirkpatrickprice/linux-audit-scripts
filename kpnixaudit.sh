@@ -1216,7 +1216,7 @@ function K8sMaster {
         comment "Refer to the CIS benchmarks for all of the tests that can be accomplished by reviewing the kube-scheduler"
         comment "command line options.  Refer to Kubernetes documentation for default settings if not specified on the command line."
 
-        dumpcmd "ps -f -C kube-controller-manager"
+        dumpcmd "ps -f -C kube-scheduler"
         dumpfile "/etc/kubernetes/manifests" "kube-scheduler.yaml"
     footer
 
@@ -1263,7 +1263,7 @@ function K8sMaster {
         dumpcmd "$KUBECTL get clusterrolebindings -o=custom-columns=NAME:.metadata.name,ROLE:.roleRef.name,SUBJECT:.subjects[*].name"
     footer
 
-    header "${FUNCNAME}_PopSecurityPolicy" "5.2.x"
+    header "${FUNCNAME}_PodSecurityPolicy" "5.2.x"
         comment "This command will provide the list of available pod security policies.  You may need to request" 
         comment "specific policies as a follow-up request."
         dumpcmd "$KUBECTL get psp --all-namespaces"
