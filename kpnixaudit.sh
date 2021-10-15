@@ -112,7 +112,7 @@
 # Version 0.6.9
 #   - Improved the collection of package manager logs for Debian-based systems in System_PackageInstalledSoftware
 #   - Added check to see if "cbagent" is running in the Security_HidsCarbonBlack section.
-#   - Added more comments about why various content might be useful to auditors (System_*).
+#   - Added more comments about why various content might be useful to auditors.
 #   - Moved check for users' authorized_keys files from Network_OpenSSHUserAuthKeys to Users_AuthorizedKeys
 #   - Grab nginx configurations from containers since that's a very popular container (Docker_ContainerDetails-Nginx)
 
