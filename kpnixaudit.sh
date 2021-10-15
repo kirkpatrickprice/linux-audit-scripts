@@ -109,10 +109,16 @@
 #   - Fixed issue in Logging_SyslogLogrorateConfig where it missed files in the /etc/logrotate.d directory
 #   - Improved IPTables collection by listing rules from FILTER, NAT and MANGLE tables (only FILTER was collected previously)
 #   - Added check to list all users with an ~/.ssh/authorized_keys file (Network_OpenSSHUserAuthKeys)
+# Version 0.6.9
+#   - Improved the collection of package manager logs for Debian-based systems in System_PackageInstalledSoftware
+#   - Added check to see if "cbagent" is running in the Security_HidsCarbonBlack section.
+#   - Added more comments about why various content might be useful to auditors (System_*).
+#   - Moved check for users' authorized_keys files from Network_OpenSSHUserAuthKeys to Users_AuthorizedKeys
+#   - Grab nginx configurations from containers since that's a very popular container (Docker_ContainerDetails-Nginx)
 
 
 
-KPNIXVERSION="0.6.8"
+KPNIXVERSION="0.6.9"
 
 function usage () {
     echo "
@@ -430,10 +436,12 @@ function getFragmentPath () {
 
 function System {
     header "${FUNCNAME}_BootLoaderInfo" "1.4.1"
+        comment "This probably isn't useful in audits where the server is a virtual machine on a cloud provider's IaaS or even on a private VMWare stack.  Still it's there if you need it."
         dumpfile "/boot" "*.cfg" "2"
     footer
 
     header "${FUNCNAME}_CrontabConfig" "Background"
+        comment "Cron is the task scheduler, so you can use this to get a list of (and even the contents of) the scheduled tasks running on a system.  E.g. backup jobs on database servers."
         dumpcmd "crontab -l"
         dumpfile /etc "crontab"
         if [ -e /etc/cron.allow ]; then 
@@ -454,6 +462,7 @@ function System {
     footer
 
     header "${FUNCNAME}_FSEncryption" "Background"
+        comment "File system encryption can be implemented at various points in the stack, including by the OS itself.  We grab these configs if Linux itself is doing the encryption."
         # Print the "cryptsetup status" output for each encrypted volume listed in /dev/mapper
 
         # Count the number of entries in /dev/mapper (exclude "control")
@@ -477,12 +486,16 @@ function System {
     footer
 
     header "${FUNCNAME}_FSMounts" "1.1.2 through 1.1.20"
+        comment "This will collect a list of all file system mounts.  Sometimes, for instance, the backups are written to a remote NFS server.  In this case, the mount point will be listed here."
         dumpcmd "mount"
         dumpfile "/etc" "fstab"
         dumpcmd "systemctl list-units --all --type=mount"
     footer
 
     header "${FUNCNAME}_FSModules" "1.1.1.x"
+        comment "This is a straight-up CIS benchmark check for which file system modules are supported by the server.  Some of these might be required in specific situationsn -- such as Docker."
+        comment "But if those conditions aren't present, then this is indicative that CIS guidelines might not be strictly followed."
+        
         ITEMS=(cramfs freevxfs jffs2 hfs hfsplus squashfs udf vfat)
 
         #Loop through each of these file system modules (separated by newlines)
@@ -516,10 +529,13 @@ function System {
     footer
 
     header "${FUNCNAME}_InittabInfo" "Background"
+        comment "Old-style System V initializatin system configuration file.  Might not be in use.  See https://geek-university.com/linux/etc-inittab/ for more info."
         dumpfile "/etc" "inittab"
     footer
 
     header "${FUNCNAME}_KernelSysctlConf" "Background"
+        comment "This section collects the CONFIGURED status for various kernel parameters -- in other words, how the system will start-up the next time it's rebooted."
+        comment "Most of these details are probably not useful in most audits, but they're here if you need them."
         dumpfile "/etc" "sysctl.conf"
         dumpfile "/etc/sysctl.d" "*"
         dumpfile "/usr/lib/sysctl.d" "*"
@@ -527,10 +543,13 @@ function System {
     footer
 
     header "${FUNCNAME}_KernelSysctlRunningConfig" "Background"
+        comment "This section collects the RUNNING status for various kernel parameters.  Most of these details are probably not useful in most audits, but they're here if you need them."
+        comment "NOTE: If there's discrepency between a CONFIGURED (System_KernelSysctlConf) item and a RUNNING item in this section, that could be interesting."
         dumpcmd "sysctl -a"
     footer
 
     header "${FUNCNAME}_LoginBanners" "1.7"
+        comment "Various login banners that could be displayed for users on logging in."
         ITEMS=(motd issue issue.net)
         for ITEM in ${ITEMS[*]}; do 
             comment "/etc/$ITEM Permissions and ownership"
@@ -571,16 +590,22 @@ function System {
     footer
 
     header "${FUNCNAME}_PackageInstalledSoftware" "Background"
+        comment "This section collects a list of installed packages as well patching update history (distribution-dependent)."
         comment "RPM installed packages (common for Redhat-based systems)"
             dumpcmd "rpm -qa --last"
-        comment "DPKG installed packages (common for Ubuntu systems)"
-        comment "dpkg keeps a log of its activity in /var/log/dpkg.log, which is subject to LogRotate.  We'll grab the install"
-        comment "activity for as far as logrotate keeps it on the local system."
+        comment "DPKG is the package manager for Debian-based systems.  First we'll dump the status of all of the packages on the system"
             dumpcmd "dpkg --get-selections"
-            dumpgrep "status installed" "/var/log" "dpkg.log*"
+        comment "Apt keeps a history of commands in /var/log/apt/history.log, so we'll grab that too."
+            dumpfile "/var/log/apt" "history.log"
+        comment "dpkg keeps a log of its activity in /var/log/dpkg.log, which is subject to LogRotate.  We'll grab the install"
+        comment "activity for as far as logrotate keeps it on the local system. To see how LogRotate is configured for these logs, "
+        comment "see the section Logging__SyslogLogrotateConfig"
+        comment "To make sense of some of what you're seeing in these logs, try out this link: https://linuxhint.com/see-dpkg-apt-history/"
+            dumpgrep "status \(install\|update\)" "/var/log" "dpkg.log*"
     footer
 
     header "${FUNCNAME}_PackageManagerConfigs" "1.2.1 1.2.2 1.2.3"
+        comment "This section provides the configuration that the package manager is using, which includes trusted sources.  Might be useful if you start tracking down patching issues."
         comment "Repo configurations"
             dumpfile "/etc" "yum.conf"
             dumpfile "/etc/apt" "sources.list"
@@ -592,6 +617,9 @@ function System {
     footer
 
     header "${FUNCNAME}_PackageManagerUpdates" "1.8"
+        comment "This section is really important for auditing patching cadence and missing critical security vulnerability patches.  We use the operating system's own tools to query"
+        comment "to compare available updates against currently-installed software versions.  Use this section to determine the criticality of any missing updates."
+        comment "Use the System_PackageInstalledSoftware section to determine patching cadence."
         echo -e "[*] Enumerating any missing package manager updates, which could take a while.\n[*] Please wait..."
         comment "Yum package updates"
             dumpcmd "yum list updates"
@@ -607,22 +635,29 @@ function System {
 
     header "${FUNCNAME}_Snaps" "Background"
         comment "Snaps are another method of installing software -- especially popular on Ubuntu-based systems."
-        comment "You probably won't see them too much on an Ubuntu server, but we collect the installed snaps just in case."
+        comment "You probably won't see them too much on a server, but we collect the installed snaps just in case."
             dumpcmd "snap list"
     footer
 
     header "${FUNCNAME}_RunningProcesses" "Background"
+        comment "This is as good as a blood test at the doctor's office.  If it's not listed here, the process isn't running. You can use it to find running anti-virus daemons, database"
+        comment "servers, Docker containers and just about anything else."
         dumpcmd "ps -eaux"
     footer
 }
 
 function Network {
     header "${FUNCNAME}_ConnectivityTest" "Background"
+        comment "A quick PING test to google.com.  On a PCI audit, ideally this would fail from systems in the CDE (not necessarily those that are \"connected to\")."
+        comment "If it doesn't, it's worth a conversation as all inbound and outbound communication must be explicitly defined for the CDE."
+        comment "If it's not a PCI audit, you can decide if this is helpful to you."
         comment "Pinging www.google.com"
-        dumpcmd "ping -c4 www.google.com"
+            dumpcmd "ping -c4 www.google.com"
     footer
 
     header "${FUNCNAME}_DNSResolver" "Background"
+        comment "We collect the DNS resolver configuration.  Using an external resolver (e.g. 8.8.8.8 for Google) could open up some interesting attack vectors through DNS poisoning."
+        comment "It's also interesting to note if there are any differences across the sample population as differences could be indicative of systems under differing levels of management."
         dumpfile "/etc" "resolv.conf"
     footer
 
@@ -659,27 +694,33 @@ function Network {
     footer
 
     header "${FUNCNAME}_ICMPRedirect" "3.1.2"
-        comment "Unless the device is functioning as a router/firewall, these values should be 0"
+        comment "Unless the device is functioning as a router/firewall, these values should be 0.  \"send_redirects\" refers to sending ICMP Redirects."
+        comment "This occurs when two routers exist on the same VLAN and R1 wants to tell the end-node to use R2 instead.  This also opens up some interesting network-layer attack vectors."
+        comment "Refer to https://www.cisco.com/c/en/us/support/docs/ios-nx-os-software/nx-os-software/213841-understanding-icmp-redirect-messages.html for more info."
         dumpcmd "sysctl net.ipv4.conf.all.send_redirects"
         dumpcmd "sysctl net.ipv4.conf.default.send_redirects"
     footer
 
     header "${FUNCNAME}_InterfacesIfConfig" "Background"
+        comment "We collect the IP address information in case it's useful.  Different systems use different methods, so we try a few ways."
         dumpcmd "ifconfig -a"
     footer
 
     header "${FUNCNAME}_InterfacesIPAddress" "Background"
+        comment "We collect the IP address information in case it's useful.  Different systems use different methods, so we try a few ways."
         dumpcmd "ip address"
     footer
 
     header "${FUNCNAME}_IPForwarding" "3.1.1"
-        comment "Unless the device is functioning as a router/firewall, these values should be 0"
+        comment "Unless the device is functioning as a router/firewall, these values should be 0."
         comment "They might also be enabled if the device is a Docker host"
         dumpcmd "sysctl net.ipv4.ip_forward"
         dumpcmd "sysctl net.ipv6.conf.all.forwarding"
     footer
 
     header "${FUNCNAME}_ListeningServices" "Background"
+        comment "We list all of the listening ports, including the binary that's listening on it.  I consider \"System_RunningProcesses\", \"System_PackageManagerUpdates\","
+        comment "and this section to be three most-valuable sections in the report."
         comment "Listening Network Ports"
             dumpcmd "netstat -lptun"
         comment "Listening Sockets"
@@ -721,18 +762,15 @@ function Network {
         comment "/etc/ssh/sshd_config.  We redact the modulus from the results."
         redactfile "/etc/ssh/moduli" "[A-Z0-9]{5,}$" "<MODULUS REDACTED>"
     footer
-    
-    header "${FUNCNAME}_OpenSSHUserAuthKeys" "Background"
-        comment "The presence of a user's .ssh/authorized_keys file indicates the potential to login via SSH.  This would override the LOCKED status results of the Users_UserStatus check later in the script."
-        dumpcmd "ls -1 /home/*/.ssh/authorized_keys"
-    footer
-
 
     header "${FUNCNAME}_RouteTable" "Background"
+        comment "This is probably only useful if you end up having to chase down something wonky in the network routing table.  But, we collect it just in case you might need it."
         dumpcmd "netstat -r"
     footer
 
     header "${FUNCNAME}_ServiceInfo" "2.x"
+        comment "This section attempts to get the status of all of the running services on a system.  As various distros vary (and sometimes widely) on how they manage this, we try several different ways."
+        comment "Some of them will provide duplicate information and none of them will probably work on any one distro.  Use this section to confirm if certain services are installed, enabled, disabled or running."
         dumpcmd "systemctl list-unit-files"
         dumpcmd "chkconfig --list"
         dumpcmd "initctl list"
@@ -743,14 +781,21 @@ function Network {
     footer
 
     header "${FUNCNAME}_Shares" "2.2.7"
-        dumpfile "/etc" "exports"
-        dumpfile "/etc" "smb.conf" "2"
+        comment "These configurations drive whether or not this server is provided network file sharing services."
+        comment "/etc/exports -- File systems/directories exported as NFS mount points that other systems can connect to.  https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/5/html/deployment_guide/s1-nfs-server-config-exports"
+            dumpfile "/etc" "exports"
+        comment "/etc/smb.conf -- Configuration file for SAMBA that makes a Linux server behave like a Windows-based file server.  https://wiki.samba.org/index.php/Main_Page"
+            dumpfile "/etc" "smb.conf" "2"
+        comment "/etc/dfs -- Configuration for a Linux server to participate in a Windows DFS.  https://en.wikipedia.org/wiki/Distributed_File_System_(Microsoft)"
         dumpfile "/etc/dfs" "dfstab"
         dumpfile "/etc/dfs" "sharetab"
-        dumpfile "/etc" "hosts" "2"
+        comment "/etc/hosts -- local name-to-IP mapping.  Entries in this file generally tend to override DNS lookup (see Network__NSSwitchConfig section above to see if this has been overridden)."
+            dumpfile "/etc" "hosts" "2"
     footer
 
     header "${FUNCNAME}_SNMPInfo" "2.2.14"
+        comment "We collect the SNMP configuration.  Of particular interest here is the permissions granted to each community strings -- could be read-only or read-write."
+        comment "Read-write should be used sparingly if at all.  Even read-only can be interesting if it's using SNMPv2 -- which can't do encryption -- or SNMPv3 without crypto."
         dumpcmd "chkconfig --list snmpd"
         svcstatus "snmpd"
         dumpfile "/etc" "snmpd.conf" "2"
@@ -759,6 +804,7 @@ function Network {
     header "${FUNCNAME}_NTP" "2.2.1"
         comment "NTP services could be provided by several different daemons including ntpd, xntpd, chrony or timesyncd."
         comment "The following will check for each of them and display their configurations if available."
+        comment "This section is really important to PCI audits for requirement 10.4.  Even outside of a PCI audit, differences between systems can be telling of an underlying configuration or log management issue."
         
         ITEMS=(ntp.conf xntp.conf chrony.conf timesyncd.conf)
 
@@ -777,27 +823,39 @@ function Network {
     footer
 
     header "${FUNCNAME}_WebserverApacheHTTPDConfig" "2.2.10"
+        comment "We try to grab the relevant files for the Apache web server configuration.  If they're using it, this section will provide web server host configurations such as the directory"
+        comment "for web site content and the port that the site listens on.  You can also see HTTPS configuration settings here too."
+        comment "See https://httpd.apache.org/docs/2.4/misc/security_tips.html for Apache's own tips for securing HTTPD (and there's a CIS Benchmark too)"
         dumpfile "/etc" "httpd.conf" "3"
         dumpfile "/etc" "apache2.conf" "3"
         dumpfile "/etc/apache2/sites-available" "*.conf"
     footer
 
     header "${FUNCNAME}_WebserverApacheModSecurityInfo" "Background"
+        comment "Mod_security is a commonly-used security module in Apache.  It might be the answer to \"Do you use a WAF?\""
+        comment "See https://nature.berkeley.edu/~casterln/modsecurity/modsecurity2-apache-reference.html for the official documentation."
         dumpfile "/etc" "modsecurity.conf" "3"
     footer
 
     header "${FUNCNAME}_WebserverNginxConfig" "2.2.10"
+        comment "nginx (\"Engine X\") is another popular web server, so we'll grab the config files here."
+        comment "The files usually in the \"conf.d\" directory are used to set up the sites that the web server will provide."
+        comment "See https://docs.nginx.com/nginx/admin-guide/security-controls/ for documetnation on nginx security."
         dumpfile "/etc" "nginx.conf" "2"
+        dumpfile "/etc/nginx/conf.d" "*"
         dumpfile "/usr/local/nginx/conf" "nginx.conf"
         dumpfile "/usr/local/etc" "nginx.conf" "2"
+        dumpfile "/usr/local/etc/conf.d" "*"
     footer
 }
 
 function Security {
     header "${FUNCNAME}_AVClamAVInfo" "Background"
-        dumpfile "/etc/" "freshclam.conf"
-        dumpfile "/etc/clam.d" "*.conf"
-        dumpfile "/etc/clamav" "*.conf"
+        comment "The ubiquitious ClamAV for Linux.  Far from the best, but still we collect the configs in case that's the answer for \"Linux AV\"."
+        comment "FreshClam is the process that checks for AV signature updates."
+            dumpfile "/etc/" "freshclam.conf"
+            dumpfile "/etc/clam.d" "*.conf"
+            dumpfile "/etc/clamav" "*.conf"
     footer
 
     header "${FUNCNAME}_HidsAIDEConfig" "1.3.1 1.3.2"
@@ -811,9 +869,12 @@ function Security {
     footer
 
     header "${FUNCNAME}_HidsCarbonBlack" "Background"
+        comment "CarbonBlack is an increasinbly-popular Endpoint Detection and Response.  It's much more than AV, even though that's frequently where we first hear of it in a customer's environment."
+        comment "It might also be the answer for FIM and a few other things."
         # Look for .conf files under /etc/cb and 2 additional levels
         dumpfile "/etc/cb" "*.conf" "3"
         dumpfile "/var/lib/cb" "sensorsettings.ini"
+        dumpcmd "ps -f -C cbagentd"
     footer
 
     header "${FUNCNAME}_HidsCrowdStrike" "Background"
@@ -836,6 +897,8 @@ function Security {
     footer
 
     header "${FUNCNAME}_IPSecConfig" "Background"
+        comment "The Linux kernel supports IPSec connections, so we'll grab the configurations if it's enabled.  Check out our Confluence page for auditing Ciphersuites at:"
+        comment "https://kirkpatrickprice.atlassian.net/l/c/4121Zw4B"
         # Obtain the stats (esepcially permissions) on the IPSec configuration files
         for n in $(find /etc -iname "ipsec.conf" -o -iname "ipsec.secrets"); do
             dumpcmd "stat $n"
@@ -852,15 +915,19 @@ function Security {
     footer
 
     header "${FUNCNAME}_NIDSSnortConfig" "Background"
+        comment "Snort used to be all the rage as a Network IDS back when data centers had everything.  It's use has dwindled, but we grab the configu if it's being used."
         dumpfile "/etc" "snort.conf"
     footer
 
     header "${FUNCNAME}_OpenLDAPConfig" "Background"
+        comment "OpenLDAP is a directory server for Linux servers.  If being used, it's probably the central source of identity for all production Linux servers."
+        comment "We're only grabbing the config file, so other checks such as password policy and group memberships will need to done elsewhere."
         dumpfile "/etc/openldap" "*.conf"
     footer
 
     header "${FUNCNAME}_OpenVPNConfig" "Background"
-
+        comment "OpenVPN might be the answer for remote access VPNs for administrator access, or it might be used in a site-to-site (Layer 3) VPN similar to IPSec."
+        comment "It's based on TLS technology, so audit the crypto-config like you would any other TLS implementation.  See https://kirkpatrickprice.atlassian.net/l/c/F6Zh6gi3 for some guidance."
         svcstatus "openvpn"
         dumpcmd "openvpn --version"
         comment "OpenVPN can be configured in either/both SERVER and CLIENT mode.  Look for both configurations under /etc/openvpn."
@@ -892,19 +959,23 @@ function Security {
 
 function Logging {
     header "${FUNCNAME}_AuditdStatus" "Background"
+        comment "AuditD performs kernel-level logging.  It can generate a lot of data and requires special tools to make the most sense out of the output, so we only grab the configs and none of the events."
+        comment "Some CIS benchmarks for both Linux and Docker (and probably others) are based on AuditD, so we also check to see if it's running at all."
         svcstatus "auditd"
     footer
     
     header "${FUNCNAME}_AuditdConfig" "4.1"
+        comment "This section provides the SAVED auditd configuration -- the one that will be used when the server reboots."
         dumpfile "/etc/audit" "*"    
     footer
 
     header "${FUNCNAME}_AuditdRunningConfig" "4.1"
+        comment "This section provides the RUNNING auditd configuraion -- the one that was in force when the script was run.  Differences between this and the SAVED configuration could be interesting."
         dumpcmd "auditctl -l"
     footer
 
     header "${FUNCNAME}_AuditdSETUID" "4.1.13"
-        comment "Check that usage of all SETUID binaries (those that will run as a fixed, usually elevated, user) is logged"
+        comment "Check that usage of all SETUID binaries (those that will run as a fixed, usually elevated, user) is logged.  This is a specific CIS benchmark check.  See below for how to make sense of this output."
         comment "Output:"
         comment "   <path-to-binary> <number-of-auditd-matches>"
         comment "   A 0 following the file indicates it is not being monitored by auditd"
@@ -924,6 +995,8 @@ function Logging {
         comment "Syslog, RSysLog and Syslog-ng all perform similar functions -- turn system and application messages into logs."
         comment "You should see one but probably not more than one of them listed below.  RSysLog is used on default Ubuntu and"
         comment "CentOS installations.  The others are collected here in the event local conditions have led to their use."
+        comment "A common check here is to make sure that logs are shipped to an external, centralized log server.  OSSEC or another tool might also capture the logs, but if none of those"
+        comment "are installed, then SysLog will need to do it.  Check for lines with an @ sign."
     footer
 
     header "${FUNCNAME}_SyslogRsyslogdConfig" "4.2.1"
@@ -945,11 +1018,14 @@ function Logging {
     footer
 
     header "${FUNCNAME}_SyslogLogrotateConfig" "4.3"
+        comment "LogRotate prunes the logs on the local disk so they don't fill up the drive.  If they're not shipped to another log server or SIEM tool by OSSEC, Syslog or something else"
+        comment "then when LogRotate deletes the log, it's gone forever.  See https://www.redhat.com/sysadmin/setting-logrotate for more information on how to read these files."
         dumpfile "/etc" "logrotate.conf"
         dumpfile "/etc/logrotate.d" "*"
     footer
 
     header "${FUNCNAME}_Samples" "Background"
+        comment "We collect samples of various logs below.  To save space, we collect only the first and last 25 lines of each file to confirm that events were and continue to be written to the logs."
         ITEMS=(messages secure boot.log auth.log audit/audit.log syslog)
 
         for ITEM in ${ITEMS[*]}; do
@@ -968,6 +1044,8 @@ function Users {
     footer
     
     header "${FUNCNAME}_BlankPasswd" "Background"
+        comment "This check identifies any users with a blank password.  This does not include users with a \"LOCKED\" password as those show up in /etc/shadow as either \"*\" or \"!\"."
+        comment "These are truly user accounts with blank password."
         dumpcmd "awk -F: '($2 == "") {print}' /etc/shadow"
     footer
 
@@ -986,18 +1064,26 @@ function Users {
     footer
 
     header "${FUNCNAME}_etcpasswdContents" "5.4"
+        comment "A list of all locally-defined users.  You can safely disregard any user with \"/bin/false\" or \"/sbin/nologin\" as they can't login.  But any user with \"/bin/bash\" is fair game."
         dumpfile "/etc" "passwd"
     footer
 
     header "${FUNCNAME}_etcgroupContents" "5.4"
+        comment "A list of groups and their memberships.  Of special interest:"
+        comment "  sudo -- Users who can issue commands as root (default /etc/sudoers configuration)"
+        comment "  adm -- Users who might be able to issue commands as root (check the /etc/sudoers configuration)"
+        comment "  Any other group listed in the /etc/sudoers config listed in Users_SudoersConfig section"
         dumpfile "/etc" "group"
     footer
 
     header "${FUNCNAME}_KerberosConfig" "Background"
+        comment "Kerberos isn't used very often as a SSO platform for Linux, but we grab the config just in case you bump into it."
         dumpfile "/etc" "krb5.conf" "2"
     footer
 
     header "${FUNCNAME}_LoginHistory" "Background"
+        comment "This is a list of the last time each user has logged in.  It could be interesting if you see ROOT listed here with a recent date.  It usually means that ROOT can login through SSH,"
+        comment "which could be indicative of generic/shared accounts (see PCI requirement 8.5)"
         dumpcmd "last"
         dumpcmd "lastlog"
     footer
@@ -1010,16 +1096,25 @@ function Users {
     footer
 
     header "${FUNCNAME}_SudoersConfig" "Background"
+        comment "The Sudoers config determines which users and groups can execute commands as ROOT by prefacing the command with \"sudo <command\"."
+        comment "See https://xkcd.com/149/ for a visual reference of the effect that the SUDO command has and https://www.linux.com/training-tutorials/configuring-linux-sudoers-file/ for a more detailed explanation."
         dumpfile "/etc" "sudoers"
         dumpfile "/etc/sudoers.d" "*"
         dumpfile "/etc" "sudo.conf"
     footer
 
     header "${FUNCNAME}_UserStatus" "5.4.1"
+        comment "Provide the status of each user in /etc/passwd.  See https://man7.org/linux/man-pages/man1/passwd.1.html (check out the -S section about halfway down) for how to read this output."
+        comment "SPECIAL NOTE: \"LOCKED\" only means they can't use a passowrd to login.  SSH key-based authentication will still work if the user has a \"~/.ssh/authorized_keys\" file (Users_AuthorizedKeys)."
         #Loop through users in /etc/passwd.  Using a for loop as not all common platforms support the "passwd -Sa" method
         for n in $(awk -F ":" '{print $1}' /etc/passwd); do
             dumpcmd "passwd -S $n"
         done
+    footer
+
+    header "${FUNCNAME}_AuthorizedKeys" "Background"
+        comment "The presence of a user's .ssh/authorized_keys file indicates the potential to login via SSH.  This would override the LOCKED status results of the Users_UserStatus check later in the script."
+        dumpcmd "ls -1 /home/*/.ssh/authorized_keys"
     footer
 
     header "${FUNCNAME}_SubuidSubgid"
@@ -1537,6 +1632,7 @@ function Docker {
         comment "   - The packages installed within the container"
         comment "   - The list of out-of-date packages within the container"
         comment "   - The list of processes running in the container (e.g. ps -ef)"
+        comment "   - NGinx configurations as this is a popular container we find in production stacks"
 
         echo -e "[*] Collecting container details, which could take a while on systems with lots of active containers.\n[*] Please wait..."
 
@@ -1571,6 +1667,23 @@ function Docker {
             
             SECTION="${FUNCNAME}_ContainerDetails-$CONTAINERNAME-RunningProcesses"
             dumpcmd "docker exec $CONTAINER ps -ef"
+        
+            SECTION="${FUNCNAME}_ContainerDetails-$CONTAINERNAME-NginxConfig"
+            comment "nginx (\"Engine X\") is another popular web server, so we'll grab the config files here."
+            comment "The files usually in the \"conf.d\" directory are used to set up the sites that the web server will provide."
+            comment "See https://docs.nginx.com/nginx/admin-guide/security-controls/ for documetnation on nginx security."
+            comment "This section is based on a default NGINX container provided by NGinx directly.  If a customer has customized their build or moved the config files, the script will report"
+            comment "no results, even though NGINX is running in the container."
+            dumpcmd "docker exec -it $CONTAINER /bin/cat /etc/nginx/nginx.conf"
+
+            #This one took some work.  Cat'ing an entire directory through the Docker Exec command doesn't seem to work correctly.  So, I had to use a Docker Exec ls to get the file names
+            #and then use "tr" to remove the "carriage return" from the results before giving that back to docker exec /bin/cat...
+            #Seems to work on Ubuntu 20.04 so far anyway.
+            CONFFILES=$(docker exec -it $CONTAINER ls -1 /etc/nginx/conf.d/)
+            for FILE in $(echo $CONFFILES | tr -d "\r"); do
+                dumpcmd "docker exec -it $CONTAINER /bin/cat /etc/nginx/conf.d/$FILE"
+            done
+
         done
     footer
 
@@ -1594,6 +1707,8 @@ function WorldFiles {
     # If the search for world-readable files hasn't already been disabled by the -w switch, provide an opportunity
     # to disable it here.  Wait for 30 seconds and if an "n" was provided, skip the check.
 
+    comment "This check will report all world-writable files.  Many of these should just be ignored -- everythin in /run, /proc, etc.  But after you filter out those results,"
+    comment "there might be some interesting things left.  If you see something in /etc, /home, /bin, /usr/bin and other important binary, configuration or user directories, it'll be worth asking the customer about them."
     if [ $WORLDFILES -eq 1 ]; then
         echo "Searching for world-writable files.  This check can take a while."
         echo "It's preferred to allow this command to run, but can be skipped if a search of all file systems"
@@ -1737,6 +1852,8 @@ echo -e ''$_{1..50}'+' 2> /dev/null >> $REPORT_NAME
 
 # Always run this check to give context to the system we're looking at
 header "System_VersionInformation" "Background"
+    comment "Collecting some basic information about the system.  Take a look through this section to find the string (it varies from RPM-based and Debian-based distros) that will let you see"
+    comment "in one list which OS types and versions are in use.  You can use that to check online to make sure that all OSes in use are still supported by the vendor."
     dumpcmd "uname -a"
     comment "System Type:"
         dumpcmd "uname -s"
