@@ -1,6 +1,8 @@
 # kpnixaudit #
 
 This script is used by KirkpatrickPrice auditors to collect information from Linux hosts.  Unlike many other tools out there, the approach used in this script is "keep it lite":
+* Keep it simple -- there is only one file that is needed -- `kpnixaudit.sh`.  Everything runs from there.
+* Keep it simple -- the script tries not to use any crazy Bash-fu.  Comments are embedded througout to facilitate DevOps, Site Reliability and other engineers' review prior to running it on your server
 * Use only commands that are already built into the operating system (no Python, Perl, jq, etc required)
 * In addition to built-in OS commands, only use commands that will only be present if the software that we're auditing is installed -- e.g. 
     * Docker ==> `docker`
@@ -18,7 +20,7 @@ This script is used by KirkpatrickPrice auditors to collect information from Lin
 * Product-specific commands: `docker` `kubectl` etc.  if installed
 
 The script has been tested against currently-supported distributions of:
-* Ubuntu -- 16.04LTS, 18.04LTS and 20.04LTS
+* Ubuntu -- 18.04LTS and 20.04LTS
 * RHEL and CentOS -- version 7.x and 8.x
 * Amazon Linux -- Versions 1 and 2
 
