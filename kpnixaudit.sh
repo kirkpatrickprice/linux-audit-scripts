@@ -501,6 +501,7 @@ function System {
         comment "This is a straight-up CIS benchmark check for which file system modules are supported by the server.  Some of these might be required in specific situationsn -- such as Docker."
         comment "But if those conditions aren't present, then this is indicative that CIS guidelines might not be strictly followed."
         
+        #Setup an array of file system modules that we'll loop through below
         ITEMS=(cramfs freevxfs jffs2 hfs hfsplus squashfs udf vfat)
 
         #Loop through each of these file system modules (separated by newlines)
@@ -678,7 +679,10 @@ function Network {
     header "${FUNCNAME}_FirewallIPTables" "3.5"
         comment "IPTables uses several different tables to achieve different effects on network traffic passing through it."
         comment "We will grab the FILTER, NAT and MANGLE tables.  Review the man page for iptables or online documentation for more info."
+        
+        #Setup an array of IPTables tables that we'll loop through to grab all of the rules
         TABLES=( filter nat mangle )
+
         for t in "${TABLES[@]}"; do
             SECTION="${FUNCNAME}_FirewallIPTables$t"
             dumpcmd "iptables -t $t -L -n -v"
@@ -728,7 +732,7 @@ function Network {
         comment "and this section to be three most-valuable sections in the report."
         comment "Listening Network Ports"
             dumpcmd "netstat -lptun"
-            dumpccmd "ss -lptun"
+            dumpcmd "ss -lptun"
         comment "Listening Sockets"
             dumpcmd "sockstat -l"
     footer
@@ -813,6 +817,7 @@ function Network {
         comment "The following will check for each of them and display their configurations if available."
         comment "This section is really important to PCI audits for requirement 10.4.  Even outside of a PCI audit, differences between systems can be telling of an underlying configuration or log management issue."
         
+        #Setup an array of NTP-ish config files that we can loop through 
         ITEMS=(ntp.conf xntp.conf chrony.conf timesyncd.conf)
 
         for ITEM in ${ITEMS[*]}; do
@@ -1033,8 +1038,11 @@ function Logging {
 
     header "${FUNCNAME}_Samples" "Background"
         comment "We collect samples of various logs below.  To save space, we collect only the first and last 25 lines of each file to confirm that events were and continue to be written to the logs."
+        
+        #Setup an array of log files (under /var/log) that we'll loop through below
         ITEMS=(messages secure boot.log auth.log audit/audit.log syslog)
 
+        #For each of the log files in the array, grab the first and last 25 lines from the file
         for ITEM in ${ITEMS[*]}; do
             SECTION="Logging_Samples-$ITEM"
             dumpcmd "head --lines=25 /var/log/$ITEM"
