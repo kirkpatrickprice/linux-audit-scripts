@@ -115,10 +115,15 @@
 #   - Added more comments about why various content might be useful to auditors.
 #   - Moved check for users' authorized_keys files from Network_OpenSSHUserAuthKeys to Users_AuthorizedKeys
 #   - Grab nginx configurations from containers since that's a very popular container (Docker_ContainerDetails-Nginx)
+# Version 0.6.10
+#   - Added "ss -lptun"-based checks where "netstat" is used to support the latest Ubuntu instances (and maybe more)
+#   - Added "ip route" in addition to "netstat -r" to support the latest Ubuntu instances (and maybe more)
+#   - Added collection of /etc/aide/* to Security_AideConfig to be sure to grab all of the Aide configs
 
 
 
-KPNIXVERSION="0.6.9"
+
+KPNIXVERSION="0.6.10"
 
 function usage () {
     echo "
@@ -723,6 +728,7 @@ function Network {
         comment "and this section to be three most-valuable sections in the report."
         comment "Listening Network Ports"
             dumpcmd "netstat -lptun"
+            dumpccmd "ss -lptun"
         comment "Listening Sockets"
             dumpcmd "sockstat -l"
     footer
@@ -766,6 +772,7 @@ function Network {
     header "${FUNCNAME}_RouteTable" "Background"
         comment "This is probably only useful if you end up having to chase down something wonky in the network routing table.  But, we collect it just in case you might need it."
         dumpcmd "netstat -r"
+        dumpcmd "ip route"
     footer
 
     header "${FUNCNAME}_ServiceInfo" "2.x"
@@ -864,8 +871,8 @@ function Security {
         dumpcmd "rpm -q aide"
         dumpcmd "dpkg -s aide"
         dumpcmd "aide -v"
-        #Look for "aide.conf" in /etc and in first-level sub-directories (e.g. /etc/aide/aide.conf but not /etc/xxx/yyy/aide.conf)
-        dumpfile "/etc" "aide.conf" "2"
+        #Grab all files under /etc/aide/*/* (one additional sub directory).  This will ensure that we get all of the per-directory/per-service/per-xxx configs
+        dumpfile "/etc/aide" "*" "2"
     footer
 
     header "${FUNCNAME}_HidsCarbonBlack" "Background"

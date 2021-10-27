@@ -27,7 +27,7 @@ It will also likely run well on any other RPM- or DEB-based distribution that su
 ## Installation
 Installation is as simple as copying or cloning the Bash script to your system.
 
-`git clone https://github.com/kirkpatrickprice/linux-audit-script`
+`git clone https://github.com/kirkpatrickprice/linux-audit-scripts`
 
 or using wget:
 
