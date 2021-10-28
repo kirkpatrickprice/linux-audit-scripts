@@ -119,11 +119,13 @@
 #   - Added "ss -lptun"-based checks where "netstat" is used to support the latest Ubuntu instances (and maybe more)
 #   - Added "ip route" in addition to "netstat -r" to support the latest Ubuntu instances (and maybe more)
 #   - Added collection of /etc/aide/* to Security_AideConfig to be sure to grab all of the Aide configs
+# Version 0.6.11
+#   - Collect all /etc/bashrc, /etc/profile and /etc/profile.d files used to set user shell defaults (Users_Profile)
+#   - Collect Fluentd configuration in Logging_FluentD
+#   - Collect Datadog configuration in Logging_Datadog
+#   - Fixed Users_BlankPasswd where it was throwing an AWK error
 
-
-
-
-KPNIXVERSION="0.6.10"
+KPNIXVERSION="0.6.11"
 
 function usage () {
     echo "
@@ -731,9 +733,13 @@ function Network {
         comment "We list all of the listening ports, including the binary that's listening on it.  I consider \"System_RunningProcesses\", \"System_PackageManagerUpdates\","
         comment "and this section to be three most-valuable sections in the report."
         comment "Listening Network Ports"
+
+        SECTION="Network_ListeningServicesNetstat"
             dumpcmd "netstat -lptun"
+        SECTION="Network_ListeningServicesSS"
             dumpcmd "ss -lptun"
-        comment "Listening Sockets"
+        SECTION="Network_ListeningServicesSockstat"
+            comment "Listening Sockets"
             dumpcmd "sockstat -l"
     footer
 
@@ -816,6 +822,7 @@ function Network {
         comment "NTP services could be provided by several different daemons including ntpd, xntpd, chrony or timesyncd."
         comment "The following will check for each of them and display their configurations if available."
         comment "This section is really important to PCI audits for requirement 10.4.  Even outside of a PCI audit, differences between systems can be telling of an underlying configuration or log management issue."
+        comment "See https://prog.world/linux-time-synchronization-ntp-chrony-and-systemd-timesyncd/ for a write-up on the popular NTP services."
         
         #Setup an array of NTP-ish config files that we can loop through 
         ITEMS=(ntp.conf xntp.conf chrony.conf timesyncd.conf)
@@ -1003,6 +1010,23 @@ function Logging {
 
     footer
 
+    header "${FUNCNAME}_Datadog" "Background"
+        comment "Datadog is a common log management solution we might see in use by our customers.  The agent is in use whenever the Datadog solution is in use."
+        comment "We'll grab the contents of the /etc/datadog-agent/datadog.yaml file and the conf.d directory.  See"
+        comment "https://docs.datadoghq.com/agent/guide/agent-configuration-files/?tab=agentv6v7 for information on how to read this file"
+
+        dumpfile "/etc/datadog-agent" "*.yaml"
+        #This should be a ridiculous MAXDEPTH=4, but without knowing just how deep the directory structure might be, I went for "too deep" rather than "not deep enough"
+        dumpfile "/etc/datadog-agent/conf.d" "*" "4"
+    footer
+
+    header "${FUNCNAME}_FluentD" "Background"
+        comment "FluentD is a common log harvester solution we might see in use by our customers.  We'll grab the contents of the"
+        comment "/etc/fluent/fluent.conf file.  See https://docs.fluentd.org/configuration/config-file for information on how to read this file"
+
+        dumpfile "/etc/fluent" "*.conf"
+    footer
+
     header "${FUNCNAME}_SyslogIntro" "4.2.1"
         comment "Syslog, RSysLog and Syslog-ng all perform similar functions -- turn system and application messages into logs."
         comment "You should see one but probably not more than one of them listed below.  RSysLog is used on default Ubuntu and"
@@ -1061,7 +1085,19 @@ function Users {
     header "${FUNCNAME}_BlankPasswd" "Background"
         comment "This check identifies any users with a blank password.  This does not include users with a \"LOCKED\" password as those show up in /etc/shadow as either \"*\" or \"!\"."
         comment "These are truly user accounts with blank password."
-        dumpcmd "awk -F: '($2 == "") {print}' /etc/shadow"
+        #dumpcmd "awk -F: '\(\$2 == \"\") {print}' /etc/shadow"
+
+        BLANKS+=$(awk -F: '($2 == "") {print $1}' /etc/shadow)
+        debug "Blank password array: \"${BLANKS[@]}\""
+        if [[ ${#BLANKS[0]} -gt 0 ]]; then
+            debug "BlankPW > 0"
+            for ITEM in ${BLANKS[@]}; do
+                echo -e "$SECTION:: User \"$ITEM\" has a blank password" >> $REPORT_NAME
+            done
+        else
+            debug "BlankPW = 0"
+            echo -e "$SECTION:: No blank passwords found" >> $REPORT_NAME
+        fi
     footer
 
     header "${FUNCNAME}_DefaultSettings" "5.4.1"
@@ -1108,6 +1144,16 @@ function Users {
         comment "http://linux-pam.org/Linux-PAM-html/Linux-PAM_SAG.html"
         dumpfile "/etc" "pam.conf"
         dumpfile "/etc/pam.d" "*"
+    footer
+
+    header "${FUNCNAME}_Profile" "5.4.4 5.4.5"
+        comment "The Profile files in /etc and /etc/profile.d control defaults for user shells upon login.  The answers to"
+        comment "a few CIS benchmark items can be found in these files, but they might also be useful for confirming other system-wide defaults."
+
+        #/etc/bashrc might also /etc/bash.bashrc at least on Ubuntu 20.04.  We'll grab all variations so long it has bashrc in the filename
+        dumpfile "/etc" "*bashrc*"
+        dumpfile "/etc" "profile"
+        dumpfile "/etc/profile.d" "*"
     footer
 
     header "${FUNCNAME}_SudoersConfig" "Background"
