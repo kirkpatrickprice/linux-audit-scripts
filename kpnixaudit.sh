@@ -124,8 +124,12 @@
 #   - Collect Fluentd configuration in Logging_FluentD
 #   - Collect Datadog configuration in Logging_Datadog
 #   - Fixed Users_BlankPasswd where it was throwing an AWK error
+# Version 0.6.12
+#   - Removed "last" command from Users_LoginHistory as it was unnecessary for what we're after here
+#   - Added "Users_Lastlog90" to only get the usernames that haven't logged in for at least 90 days
+#   - Added GPG-signed commits to increase reliability that code hasn't been changed
 
-KPNIXVERSION="0.6.11"
+KPNIXVERSION="0.6.12"
 
 function usage () {
     echo "
@@ -1092,7 +1096,7 @@ function Users {
         if [[ ${#BLANKS[0]} -gt 0 ]]; then
             debug "BlankPW > 0"
             for ITEM in ${BLANKS[@]}; do
-                echo -e "$SECTION:: User \"$ITEM\" has a blank password" >> $REPORT_NAME
+                echo -e "$SECTION::User \"$ITEM\" has a blank password" >> $REPORT_NAME
             done
         else
             debug "BlankPW = 0"
@@ -1135,8 +1139,13 @@ function Users {
     header "${FUNCNAME}_LoginHistory" "Background"
         comment "This is a list of the last time each user has logged in.  It could be interesting if you see ROOT listed here with a recent date.  It usually means that ROOT can login through SSH,"
         comment "which could be indicative of generic/shared accounts (see PCI requirement 8.5)"
-        dumpcmd "last"
         dumpcmd "lastlog"
+    footer
+
+    header "${FUNCNAME}_LastLog90" "Background"
+        comment "This is a list of local (/etc/passwd) user IDs that have not logged in within the last 90 days"
+        comment "You need this for a PCI audit, but it's also important for many other audits"
+        dumpcmd "lastlog -b 90"
     footer
 
     header "${FUNCNAME}_PAMConfig" "5.3"
