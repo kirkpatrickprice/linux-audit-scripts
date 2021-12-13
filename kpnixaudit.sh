@@ -127,7 +127,7 @@
 # Version 0.6.12
 #   - Removed "last" command from Users_LoginHistory as it was unnecessary for what we're after here
 #   - Added "Users_Lastlog90" to only get the usernames that haven't logged in for at least 90 days
-#   - Added GPG-signed commits to increase reliability that code hasn't been changed 
+#   - Added GPG-signed commits to increase reliability that code hasn't been changed
 
 KPNIXVERSION="0.6.12"
 

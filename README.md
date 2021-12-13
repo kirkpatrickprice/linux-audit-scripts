@@ -11,7 +11,7 @@ This script is used by KirkpatrickPrice auditors to collect information from Lin
 * Minimal real-time analysis -- we collect data for off-line analysis and don't report findings during data collection.  This keeps the dependencies to a minimum and the logic simple, especially important for running the script on production machines.
 * Fail quietly -- If a command isn't found or the piece of software isn't installed, note that in the output and keep going
 
-Starting with version 0.6.12, all Git Commits are signed to increase reliability that code hasn't been changed by anyone but KirkpatrickPrice.  You can verify the signature of any commit by clicking on the commit message or hash ID and noting that "Verified" is indicated. 
+Starting with version 0.6.12, all Git Commits are signed to increase reliability that code hasn't been changed by anyone but KirkpatrickPrice.  You can verify the signature of any commit by clicking on the commit message or hash ID and noting that "Verified" is indicated.
 
 ## Critical dependencies ##
 * Shell: `bash`
