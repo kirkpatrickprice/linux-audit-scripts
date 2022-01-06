@@ -128,11 +128,16 @@
 #   - Removed "last" command from Users_LoginHistory as it was unnecessary for what we're after here
 #   - Added "Users_Lastlog90" to only get the usernames that haven't logged in for at least 90 days
 #   - Added GPG-signed commits to increase reliability that code hasn't been changed
+#   - Added version string to Usage output
+# Version 0.6.13
+#   - Added version output to the Usage function
+#   - Cleaned up a typo in the Users_BlankPasswd check output
 
-KPNIXVERSION="0.6.12"
+KPNIXVERSION="0.6.13"
 
 function usage () {
     echo "
+    $(basename $0) Version ${KPNIXVERSION}
 
     Creates a text file in ~/<hostname>.txt with system configuraiton information needed to audit Linux systems
 
@@ -1100,7 +1105,7 @@ function Users {
             done
         else
             debug "BlankPW = 0"
-            echo -e "$SECTION:: No blank passwords found" >> $REPORT_NAME
+            echo -e "$SECTION::No blank passwords found" >> $REPORT_NAME
         fi
     footer
 
