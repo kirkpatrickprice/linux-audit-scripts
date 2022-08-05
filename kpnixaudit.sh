@@ -132,8 +132,15 @@
 # Version 0.6.13
 #   - Added version output to the Usage function
 #   - Cleaned up a typo in the Users_BlankPasswd check output
+# Version 0.6.14
+#   - Added additional checks to support Ubuntu 22.04
+#   - Separated "Network_Shares" in to "Network_SharesNFS" and "Network_SharesSamba"
+#   - Acquired additional NFS-related content including NFS server configs in /etc/default/nfs-*, /etc/nfs.conf and /etc/nfs.conf.d
+#   - Modified svcstatus to report the current status (active/inactive/etc) when systemctl is used.
+#       NOTE: This change results in both uninstalled as well as currently not-running services being reported as "inactive"
+#   - Added check to list file system permissions for key log files in /var/log (Logging_LogFilePermissions)
 
-KPNIXVERSION="0.6.13"
+KPNIXVERSION="0.6.14"
 
 function usage () {
     echo "
@@ -377,7 +384,7 @@ function svcstatus () {
 
     #If systemctl is available, use it
     if [ -n "$(which systemctl 2> /dev/null)" ]; then
-        local CMD="systemctl is-enabled $1"
+        local CMD="systemctl is-active $1"
     else
         #If systemctl is not available, but the service command is, then use it
         if [ -n "$(which service 2> /dev/null)" ]; then
@@ -565,7 +572,7 @@ function System {
         dumpcmd "sysctl -a"
     footer
 
-    header "${FUNCNAME}_LoginBanners" "1.7"
+    header "${FUNCNAME}_LoginBanners" "1.7.1.x"
         comment "Various login banners that could be displayed for users on logging in."
         ITEMS=(motd issue issue.net)
         for ITEM in ${ITEMS[*]}; do 
@@ -806,15 +813,36 @@ function Network {
         dumpcmd "service --status-all"
     footer
 
-    header "${FUNCNAME}_Shares" "2.2.7"
-        comment "These configurations drive whether or not this server is provided network file sharing services."
+    header "${FUNCNAME}_SharesNFS" "2.2.7"
+        comment "These configurations drive whether or not this server is providing network file sharing services."
+        comment "The Network File System (NFS) is common in Unix/Linux-only environments where SMB compatability is not needed for access to/from Windows systems"
+        comment "nfs-server is the name of the service on Ubuntu.  For Redhat, it's just nfs.  In both cases, there are additional support services.  We'll list the status of all nfs-related services."
+            for ITEM in $(systemctl list-unit-files | grep "nfs.*service" | awk '{print $1}'); 
+                do svcstatus $ITEM
+            done
+            svcstatus "rpcbind"
+
+        comment "NFS Server Configurations"
+        dumpfile "/etc/default" "nfs-*"
+        dumpfile "/etc" "nfs.conf"
+        dumpfile "/etc/nfs.conf.d" "*.conf"
+
         comment "/etc/exports -- File systems/directories exported as NFS mount points that other systems can connect to.  https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/5/html/deployment_guide/s1-nfs-server-config-exports"
             dumpfile "/etc" "exports"
+            dumpfile "/etc/exports.d" "*"
+    footer
+    
+    header "${FUNCNAME}_SharesSamba" "2.2.12"
+        comment "Check if the SMB service is running. Samba provides Server Message Block file share compatibility so that the server can participate in Windows-based network file sharing"
+            svcstatus "smbd"
         comment "/etc/smb.conf -- Configuration file for SAMBA that makes a Linux server behave like a Windows-based file server.  https://wiki.samba.org/index.php/Main_Page"
             dumpfile "/etc" "smb.conf" "2"
         comment "/etc/dfs -- Configuration for a Linux server to participate in a Windows DFS.  https://en.wikipedia.org/wiki/Distributed_File_System_(Microsoft)"
-        dumpfile "/etc/dfs" "dfstab"
-        dumpfile "/etc/dfs" "sharetab"
+            dumpfile "/etc/dfs" "dfstab"
+            dumpfile "/etc/dfs" "sharetab"
+    footer
+
+    header "${FUNCNAME}_EtcHosts" "Background"
         comment "/etc/hosts -- local name-to-IP mapping.  Entries in this file generally tend to override DNS lookup (see Network__NSSwitchConfig section above to see if this has been overridden)."
             dumpfile "/etc" "hosts" "2"
     footer
@@ -840,6 +868,8 @@ function Network {
             dumpfile "/etc" "$ITEM" "3"
         done
 
+        dumpfile "/etc/timesync.conf.d" "*"
+
         comment "Query the NTP server status."
             SECTION="Network_NTP-ntpd"
                 dumpcmd "ntpq -p -c ntpversion"
@@ -848,6 +878,7 @@ function Network {
             SECTION="Network_NTP-timesyncd"
                 dumpcmd "timedatectl status"
                 dumpcmd "timedatectl timesync-status"
+                dumpcmd "timedatectl show-timesync"
     footer
 
     header "${FUNCNAME}_WebserverApacheHTTPDConfig" "2.2.10"
@@ -871,6 +902,8 @@ function Network {
         comment "See https://docs.nginx.com/nginx/admin-guide/security-controls/ for documetnation on nginx security."
         dumpfile "/etc" "nginx.conf" "2"
         dumpfile "/etc/nginx/conf.d" "*"
+        dumpfile "/etc/nginx/sites-enabled" "*"
+        dumpfile "/etc/nginx/sites-available" "*"
         dumpfile "/usr/local/nginx/conf" "nginx.conf"
         dumpfile "/usr/local/etc" "nginx.conf" "2"
         dumpfile "/usr/local/etc/conf.d" "*"
@@ -1069,16 +1102,30 @@ function Logging {
         dumpfile "/etc/logrotate.d" "*"
     footer
 
+    header "${FUNCNAME}_LogFilePermissions"
+        comment "Collect log file permissions for a few key log files"
+        ITEMS=(messages secure boot.log auth.log audit/audit.log syslog apache2 httpd nginx/access.log)
+
+        for ITEM in ${ITEMS[*]}; do
+            dumpcmd "ls -l /var/log/$ITEM"
+        done
+
     header "${FUNCNAME}_Samples" "Background"
+        comment "A full list of the /var/log sub-directory.  Below, we grab samples of some of the common ones, but if any of these other log files look interesting, you'll need to request those separately"
+        SECTION="Logging_SamplesVarLogList"
+            dumpcmd "find /var/log"
+
         comment "We collect samples of various logs below.  To save space, we collect only the first and last 25 lines of each file to confirm that events were and continue to be written to the logs."
+        comment "If you need to see more of some log files, you'll need to ask for those separately"
         
         #Setup an array of log files (under /var/log) that we'll loop through below
-        ITEMS=(messages secure boot.log auth.log audit/audit.log syslog)
+        ITEMS=(messages secure boot.log auth.log audit/audit.log syslog apache2 httpd nginx/access.log)
 
         #For each of the log files in the array, grab the first and last 25 lines from the file
         for ITEM in ${ITEMS[*]}; do
-            SECTION="Logging_Samples-$ITEM"
+            SECTION="Logging_Samples-$ITEM-head"
             dumpcmd "head --lines=25 /var/log/$ITEM"
+            SECTION="Logging_Samples-$ITEM-tail"
             dumpcmd "tail --lines=25 /var/log/$ITEM"
         done
         SECTION="Logging_Samples"
