@@ -139,8 +139,10 @@
 #   - Modified svcstatus to report the current status (active/inactive/etc) when systemctl is used.
 #       NOTE: This change results in both uninstalled as well as currently not-running services being reported as "inactive"
 #   - Added check to list file system permissions for key log files in /var/log (Logging_LogFilePermissions)
+# Version 0.6.15
+#   - Changes to better facilitate working with adv-searchfor.py's YAML scripted mode
 
-KPNIXVERSION="0.6.14"
+KPNIXVERSION="0.6.15"
 
 function usage () {
     echo "
@@ -510,9 +512,13 @@ function System {
 
     header "${FUNCNAME}_FSMounts" "1.1.2 through 1.1.20"
         comment "This will collect a list of all file system mounts.  Sometimes, for instance, the backups are written to a remote NFS server.  In this case, the mount point will be listed here."
-        dumpcmd "mount"
-        dumpfile "/etc" "fstab"
-        dumpcmd "systemctl list-units --all --type=mount"
+        SECTION='${FUNCNAME}_FSMounts-mounts'
+            dumpcmd "mount"
+        SECTION='${FUNCNAME}_FSMounts-fstab'
+            dumpfile "/etc" "fstab"
+        SECTION='${FUNCNAME}_FSMounts-systemctl'
+            dumpcmd "systemctl list-units --all --type=mount"
+        SECTION='${FUNCNAME}_FSMounts'
     footer
 
     header "${FUNCNAME}_FSModules" "1.1.1.x"
@@ -804,13 +810,20 @@ function Network {
     header "${FUNCNAME}_ServiceInfo" "2.x"
         comment "This section attempts to get the status of all of the running services on a system.  As various distros vary (and sometimes widely) on how they manage this, we try several different ways."
         comment "Some of them will provide duplicate information and none of them will probably work on any one distro.  Use this section to confirm if certain services are installed, enabled, disabled or running."
-        dumpcmd "systemctl list-unit-files"
-        dumpcmd "chkconfig --list"
-        dumpcmd "initctl list"
-        dumpcmd "service -e"
-        dumpcmd "launchctl list"
-        dumpcmd "svcs 2> /dev/null"
-        dumpcmd "service --status-all"
+        SECTION="${FUNCNAME}_ServiceInfo-systemctl"
+            dumpcmd "systemctl list-unit-files"
+        SECTION="${FUNCNAME}_ServiceInfo-chkconfig"
+            dumpcmd "chkconfig --list"
+        SECTION="${FUNCNAME}_ServiceInfo-initctl"
+            dumpcmd "initctl list"
+        SECTION="${FUNCNAME}_ServiceInfo"
+            dumpcmd "service -e"
+            dumpcmd "service --status-all"
+        SECTION="${FUNCNAME}_ServiceInfo-launchctl"
+            dumpcmd "launchctl list"
+        SECTION="${FUNCNAME}_ServiceInfo-svcs"
+            dumpcmd "svcs 2> /dev/null"
+        SECTION="${FUNCNAME}_ServiceInfo"        
     footer
 
     header "${FUNCNAME}_SharesNFS" "2.2.7"
