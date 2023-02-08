@@ -143,8 +143,10 @@
 #   - Changes to better facilitate working with adv-searchfor.py's YAML scripted mode
 # Version 0.6.16
 #   - Typos and other minor corrections
+# Version 0.6.17
+#   - Add command line switch to disable Kubes checks (especially useful for scripting kpnixaudit.sh)
 
-KPNIXVERSION="0.6.16"
+KPNIXVERSION="0.6.17"
 
 function usage () {
     echo "
@@ -157,6 +159,7 @@ function usage () {
         Options:
             -c      Print DumpCmd errors messages to STDERR instead of redirecting them to /dev/null
             -d      Print DEBUG messages to STDOUT and to REPORT_NAME
+            -k      Disable Kubernetes checks
             -m      Select modules to run.  Use -m multiple times to select more than one module
                     If not used, all modules will be run.  If used, only the selected modules will be 
                     run.  To run all modules except for WorldFiles, use the -w switch.  Module names 
@@ -1910,7 +1913,7 @@ for MODULE in "${MODULESLIST[@]}"; do
 done
 
 #Get the command line options
-while getopts ":cdhm:w" OPTION; do
+while getopts ":cdhkm:w" OPTION; do
     case $OPTION in
         c )
             DEBUGCMD=1
@@ -1918,6 +1921,9 @@ while getopts ":cdhm:w" OPTION; do
         d )
             DEBUG=1
             DEBUGCMD=1
+            ;;
+        k )
+            NOKUBES=1
             ;;
         m )
             debug "OPTARG: $OPTARG"
@@ -1956,13 +1962,21 @@ if [ $MODULESUSED -eq 0 ]; then
 fi
 
 # Check if K8sMaster has been selected and check for the KUBEUSERCONFIG file.  If it doesn't exist, prompt the user for one
+if [ ${NOKUBES} -eq 1 ]; then
+    SELECTED[K8s]=0
+    SELECTED[K8sMaster]=0
+    SELECTED[K8sWorker]=0
+fi
+
 if [ ${SELECTED[K8sMaster]} -eq 1 ]; then 
     KUBECTL="kubectl --kubeconfig $KUBEUSERCONFIG"
     while [ ! -f "$KUBEUSERCONFIG" -a "$KUBEUSERCONFIG" != "none" ]; do
         echo "$KUBEUSERCONFIG does not exist."
         read -p "Provide a path to a Kube user config file to use (or 'none' to disable Kubernetes Master checks): " KUBEUSERCONFIG
         if [ "$KUBEUSERCONFIG" == "none" ]; then
+            SELECTED[K8s]=0
             SELECTED[K8sMaster]=0
+            SELECTED[K8sWorker]=0
         else
             KUBECTL="kubectl --kubeconfig $KUBEUSERCONFIG"
         fi

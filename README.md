@@ -46,6 +46,7 @@ USAGE:
         Options:
             -c      Print DumpCmd errors messages to STDERR instead of redirecting them to /dev/null
             -d      Print DEBUG messages to STDOUT and to REPORT_NAME
+            -k      Disable all Kubernetes checks
             -m      Select modules to run.  Use -m multiple times to select more than one module
                     If not used, all modules will be run.  If used, only the selected modules will be
                     run.  To run all modules except for WorldFiles, use the -w switch.  Module names
