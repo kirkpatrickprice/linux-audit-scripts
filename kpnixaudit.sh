@@ -145,8 +145,11 @@
 #   - Typos and other minor corrections
 # Version 0.6.17
 #   - Add command line switch to disable Kubes checks (especially useful for scripting kpnixaudit.sh)
+# Version 0.6.18
+#   - Collect /etc/yum.repos.d/* (System_PackageManagerConfigs)
+#   - Collect /etc/krb5.conf.d/* (Users_KerberosConfig)
 
-KPNIXVERSION="0.6.17"
+KPNIXVERSION="0.6.18"
 
 function usage () {
     echo "
@@ -472,6 +475,7 @@ function System {
 
     header "System_CrontabConfig" "Background"
         comment "Cron is the task scheduler, so you can use this to get a list of (and even the contents of) the scheduled tasks running on a system.  E.g. backup jobs on database servers."
+        comment "Also take a look at System_Timers below as this is the SystemD method of scheduling jobs"
         dumpcmd "crontab -l"
         dumpfile /etc "crontab"
         if [ -e /etc/cron.allow ]; then 
@@ -489,6 +493,16 @@ function System {
         dumpfile "/etc/cron.daily" "*"
         dumpfile "/etc/cron.weekly" "*"
         dumpfile "/etc/cron.monthly" "*"
+    footer
+
+    header "System_Timers" "Background"
+        comment "SystemD can also user 'timers' in addition to jobs listed in the 'System_CrontabConfig' section above.  This is a list of the scheduled timers and their configurations"
+        dumpcmd "systemctl --full --timestamp=utc list-timers"
+        for ITEM in $(systemctl list-unit-files --type=timer --state=enabled --state=static | awk '/timer/{ print $1 } '); do 
+            SECTION="System_Timers-$ITEM"
+            dumpcmd "systemctl cat $ITEM"
+        done
+        SECTION="System_Timers"
     footer
 
     header "System_FSEncryption" "Background"
@@ -643,6 +657,7 @@ function System {
         comment "This section provides the configuration that the package manager is using, which includes trusted sources.  Might be useful if you start tracking down patching issues."
         comment "Repo configurations"
             dumpfile "/etc" "yum.conf"
+            dumpfile "/etc/yum.repos.d" "*"
             dumpfile "/etc/apt" "sources.list"
             dumpfile "/etc/apt/apt.conf.d" "*"
         comment "GPG configurations"
@@ -1204,6 +1219,7 @@ function Users {
     header "Users_KerberosConfig" "Background"
         comment "Kerberos isn't used very often as a SSO platform for Linux, but we grab the config just in case you bump into it."
         dumpfile "/etc" "krb5.conf" "2"
+        dumpfile "/etc/krb5.conf.d" "*"
     footer
 
     header "Users_LoginHistory" "Background"
