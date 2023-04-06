@@ -148,8 +148,11 @@
 # Version 0.6.18
 #   - Collect /etc/yum.repos.d/* (System_PackageManagerConfigs)
 #   - Collect /etc/krb5.conf.d/* (Users_KerberosConfig)
+# Version 0.6.19 (April 6, 2023)
+#   - Collect "dnf history list" (System_PacakageManagerInstalledSoftware)
+#   - Collect "dnf list updates" (System_PackageManagerUpdates)
 
-KPNIXVERSION="0.6.18"
+KPNIXVERSION="0.6.19"
 
 function usage () {
     echo "
@@ -640,8 +643,13 @@ function System {
 
     header "System_PackageInstalledSoftware" "Background"
         comment "This section collects a list of installed packages as well patching update history (distribution-dependent)."
+        SECTION="System_PackageInstalledSoftware-rpm"
         comment "RPM installed packages (common for Redhat-based systems)"
             dumpcmd "rpm -qa --last"
+        SECTION="System_PackageInstalledSoftware-dnf"
+        comment "dnf history results"
+            dumpcmd "dnf history list"
+        SECTION="System_PackageInstalledSoftware-dpkg"
         comment "DPKG is the package manager for Debian-based systems.  First we'll dump the status of all of the packages on the system"
             dumpcmd "dpkg --get-selections"
         comment "Apt keeps a history of commands in /var/log/apt/history.log, so we'll grab that too."
@@ -671,8 +679,13 @@ function System {
         comment "to compare available updates against currently-installed software versions.  Use this section to determine the criticality of any missing updates."
         comment "Use the System_PackageInstalledSoftware section to determine patching cadence."
         echo -e "[*] Enumerating any missing package manager updates, which could take a while.\n[*] Please wait..."
-        comment "Yum package updates"
+        SECTION="System_PackageManagerUpdates-dnf"
+        comment "Prefer DNF updates for RPM-based devices, if supported on this system"
+            dumpcmd "dnf list updates"
+        SECTION="System_PackageManagerUpdates-yum"
+        comment "Use YUM results in case dnf didn't work"
             dumpcmd "yum list updates"
+        SECTION="System_PackageManagerUpdates-apt"
         comment "Apt package updates"
             # The following commands will update the "apt" package database and then simulate an update.  The "assume-no" is the 
             # same as responding "No" to the "Do you want to continue" prompt. No updates will be applied to the system.
