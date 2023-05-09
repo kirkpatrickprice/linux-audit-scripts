@@ -22,9 +22,9 @@ Starting with version 0.6.12, all Git Commits are signed to increase reliability
 * Product-specific commands: `docker` `kubectl` etc.  if installed
 
 The script has been tested against currently-supported distributions of:
-* Ubuntu -- 18.04LTS and 20.04LTS
-* RHEL and CentOS -- version 7.x and 8.x
-* Amazon Linux -- Versions 1 and 2
+* Ubuntu -- 20.04LTS and 22.04LTS
+* RHEL and CentOS -- version 7.9, 8.x, 9.x
+* Amazon Linux -- Versions 1 and 2 (but it should also work on AL2023)
 
 It will also likely run well on any other RPM- or DEB-based distribution that supports the dependencies above.
 

@@ -151,8 +151,10 @@
 # Version 0.6.19 (April 6, 2023)
 #   - Collect "dnf history list" (System_PacakageManagerInstalledSoftware)
 #   - Collect "dnf list updates" (System_PackageManagerUpdates)
+# Version 0.6.20 (May 9, 2023)
+#   - Collect /etc/dnf/*.conf files (System_PackageManagerConfigs)
 
-KPNIXVERSION="0.6.19"
+KPNIXVERSION="0.6.20"
 
 function usage () {
     echo "
@@ -666,6 +668,7 @@ function System {
         comment "Repo configurations"
             dumpfile "/etc" "yum.conf"
             dumpfile "/etc/yum.repos.d" "*"
+            dumpfile "/etc/dnf" "*.conf"
             dumpfile "/etc/apt" "sources.list"
             dumpfile "/etc/apt/apt.conf.d" "*"
         comment "GPG configurations"
