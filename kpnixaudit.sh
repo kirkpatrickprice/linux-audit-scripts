@@ -153,8 +153,11 @@
 #   - Collect "dnf list updates" (System_PackageManagerUpdates)
 # Version 0.6.20 (May 9, 2023)
 #   - Collect /etc/dnf/*.conf files (System_PackageManagerConfigs)
+# Version 0.6.21 (June 21, 2023)
+#   - Collect BIOS information (System_BIOS)
+#   - Collect per-user crontabs located in /var/spool/cron/ (System_ScheduledJobs-<username>)
 
-KPNIXVERSION="0.6.20"
+KPNIXVERSION="0.6.21"
 
 function usage () {
     echo "
@@ -473,6 +476,12 @@ function getFragmentPath () {
 }
 
 function System {
+    header "System_BIOS" "Background"
+        comment "Collect BIOS information for review and comparison against known CVEs.  BIOS vulnerabilities are particularly nasty in that they can affect an OS before it fully boots."
+        comment "They are also, thankfully, rarer than your garden-variety CVE affecting general-purpose software components." 
+        dumpcmd "dmidecode -t bios"
+    footer
+
     header "System_BootLoaderInfo" "1.4.1"
         comment "This probably isn't useful in audits where the server is a virtual machine on a cloud provider's IaaS or even on a private VMWare stack.  Still it's there if you need it."
         dumpfile "/boot" "*.cfg" "2"
@@ -498,6 +507,12 @@ function System {
         dumpfile "/etc/cron.daily" "*"
         dumpfile "/etc/cron.weekly" "*"
         dumpfile "/etc/cron.monthly" "*"
+    footer
+
+    header "System_UserCrontab" "Background"
+        comment "Per-user crontabs (if any) are created in /var/spool/cron (or /var/spool/cron/crontabs for Debian-based systems)"
+        #Capture all per-user crontabs, including in one level of sub-directories
+        dumpfile "/var/spool/cron" "*" "2"
     footer
 
     header "System_Timers" "Background"
