@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2021 KirkpatrickPrice, Inc.
+# Copyright 2024 KirkpatrickPrice, Inc.
 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -156,8 +156,10 @@
 # Version 0.6.21 (June 21, 2023)
 #   - Collect BIOS information (System_BIOS)
 #   - Collect per-user crontabs located in /var/spool/cron/ (System_ScheduledJobs-<username>)
+# Version 0.6.22 (Feb 14, 2024)
+#   Fixed unary operator expected error in KUBES check (https://github.com/kirkpatrickprice/linux-audit-scripts/issues/22) Thanks to @knightsg
 
-KPNIXVERSION="0.6.21"
+KPNIXVERSION="0.6.22"
 
 function usage () {
     echo "
@@ -1927,6 +1929,7 @@ clear
 
 # Set some global variables
 USER=$(whoami)
+NOKUBES=0
 DEBUG=0                                                                                 # Holder variable to enable/disable debug mode
 DEBUGCMD=0                                                                              # Holder variable to enable/disable debugcmd mode
 WORLDFILES=1                                                                            # Holder variable to enable/disable WORLDFILES checking
