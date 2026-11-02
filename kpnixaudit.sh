@@ -158,8 +158,18 @@
 #   - Collect per-user crontabs located in /var/spool/cron/ (System_ScheduledJobs-<username>)
 # Version 0.6.22 (Feb 14, 2024)
 #   Fixed unary operator expected error in KUBES check (https://github.com/kirkpatrickprice/linux-audit-scripts/issues/22) Thanks to @knightsg
+# Version 0.6.23 (Nov 2, 2026)
+#   - SECURITY: Running process list used "ps -eaux", which appended every process's environment variables (and any secrets they held)
+#     to the report.  Changed to "ps aux" (System_RunningProcesses).  Output columns are unchanged.
+#   - Stopped collecting data that isn't needed and commonly holds credentials:
+#       - Docker_ContainerDetails-*-Config: CIS-relevant fields only instead of the full "docker container inspect" (no Env, Cmd or log options)
+#       - Docker_ContainerDetails-*-RunningProcesses: "docker top" process names instead of "docker exec ps -ef" command lines
+#       - Docker_Logs: removed (the log driver is now reported in Docker_ContainerDetails-*-Config)
+#       - Users_Profile: only umask and TMOUT lines instead of the full profile/bashrc files
+#   - Added redactsecrets/dumpfileredacted/dumpcmdredacted to scrub passwords, tokens, keys and URL credentials at the point of capture
+#     where the full content is the audit evidence: crontabs, /etc/default/docker, K8s manifests, process command lines and docker history
 
-KPNIXVERSION="0.6.22"
+KPNIXVERSION="0.6.23"
 
 function usage () {
     echo "
@@ -256,12 +266,13 @@ function dumpfile () {
             comment "File contents: $n"
             
             # Use awk to format each line as SECTION::FILENAME::LINE
-            awk \
+            # FILTER is set by dumpfileredacted to scrub secrets before they're written to the report
+            ${FILTER:-cat} < $n | awk \
                 -v vSECTION="$SECTION" \
                 -v vFILE=$n \
                 '{
                     printf "%s::%s::%s\n",vSECTION,vFILE,$0;
-                }' $n >> $REPORT_NAME
+                }' >> $REPORT_NAME
         done
     else
         debug "$1 directory does not exist"
@@ -304,6 +315,111 @@ function redactfile () {
     fi
 }
 
+function redactsecrets () {
+    #Filter stdin to stdout, replacing likely secrets with <REDACTED> while leaving the rest of each line intact so the
+    #report format (and any downstream regex parsing) is unchanged.  Handles:
+    #   - NAME=value and name: value pairs where NAME looks sensitive (password, secret, token, etc.)
+    #   - Credentials embedded in URLs (scheme://user:password@host)
+    #   - Kubernetes YAML env entries ("- name: DB_PASSWORD" followed by "value: ...")
+    #   - Every value in the "Env" array of "docker inspect" output
+    #Values that are file paths, variable references or booleans are not secrets and are left alone.  Several CIS
+    #checks rely on them (e.g. --token-auth-file=/etc/..., --enable-bootstrap-token-auth=true).
+
+    awk -v SQ="'" '
+    BEGIN {
+        SENS = "(pass|pwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key)"
+        NAMECHARS = "[a-z0-9_.-]*"
+        PAIRRE = NAMECHARS SENS NAMECHARS "[\"" SQ "]?[ \t]*[=:]"
+        YAMLNAMERE = "^[ \t-]*name:[ \t]*[\"" SQ "]?" NAMECHARS SENS NAMECHARS "[\"" SQ "]?[ \t]*$"
+        URLRE = "://[^/:@ \t\"" SQ "]+:[^/ \t\"" SQ "]+@"
+        QUOTERE = "^[\"" SQ "]"
+        UNQUOTEDRE = "^[^ \t\"" SQ "]*"
+    }
+
+    function exempt(v) {
+        gsub("^[\"" SQ "]|[\"" SQ ",]*$", "", v)
+        v = tolower(v)
+        return (v == "" || v ~ /^[\/$~<{\[]/ || v ~ /^(true|false|yes|no|none|null)$/)
+    }
+
+    function redacturls(line,    out, seg, c) {
+        out = ""
+        while (match(line, URLRE)) {
+            seg = substr(line, RSTART, RLENGTH)
+            c = index(substr(seg, 4), ":") + 3
+            out = out substr(line, 1, RSTART - 1) substr(seg, 1, c) "<REDACTED>@"
+            line = substr(line, RSTART + RLENGTH)
+        }
+        return out line
+    }
+
+    function redactpairs(line,    out, sep, val, rest, q, end) {
+        out = ""
+        while (match(tolower(line), PAIRRE)) {
+            sep = substr(line, RSTART + RLENGTH - 1, 1)
+            out = out substr(line, 1, RSTART + RLENGTH - 1)
+            line = substr(line, RSTART + RLENGTH)
+
+            # Keep any whitespace between the separator and the value
+            match(line, /^[ \t]*/)
+            out = out substr(line, 1, RLENGTH)
+            line = substr(line, RLENGTH + 1)
+
+            if (sep == ":") {
+                # YAML/JSON style -- the value runs to the end of the line
+                val = line; rest = ""
+            } else if (line ~ QUOTERE) {
+                # Quoted value -- runs to the matching quote
+                q = substr(line, 1, 1)
+                end = index(substr(line, 2), q)
+                if (end) { val = substr(line, 1, end + 1); rest = substr(line, end + 2) }
+                else { val = line; rest = "" }
+            } else {
+                # Unquoted value -- runs to the next whitespace or quote
+                match(line, UNQUOTEDRE)
+                val = substr(line, 1, RLENGTH); rest = substr(line, RLENGTH + 1)
+            }
+
+            out = out (exempt(val) ? val : "<REDACTED>")
+            line = rest
+        }
+        return out line
+    }
+
+    {
+        line = $0
+        low = tolower(line)
+
+        if (inenv) {
+            # Inside the docker inspect "Env": [ ... ] array -- keep the variable names but drop every value
+            if (low ~ /^[ \t]*\]/) inenv = 0
+            else if (match(line, /=.*"/)) line = substr(line, 1, RSTART) "<REDACTED>" substr(line, RSTART + RLENGTH - 1)
+            print line
+            next
+        }
+        if (low ~ /^[ \t]*"env": \[[ \t]*$/) inenv = 1
+
+        if (pendingvalue && low ~ /^[ \t]*value:/) sub(/value:.*/, "value: <REDACTED>", line)
+        pendingvalue = (low ~ YAMLNAMERE)
+
+        print redactpairs(redacturls(line))
+    }'
+}
+
+function dumpfileredacted () {
+    #Same as dumpfile, but passes the file contents through redactsecrets first.  Use for files that commonly
+    #hold credentials (crontabs, shell profiles, environment files, K8s manifests, etc.)
+    local FILTER=redactsecrets
+    dumpfile "$@"
+}
+
+function dumpcmdredacted () {
+    #Same as dumpcmd, but passes the command output through redactsecrets first.  Use for commands whose output
+    #can include credentials (process command lines, container configs, image history, logs, etc.)
+    local FILTER=redactsecrets
+    dumpcmd "$@"
+}
+
 function dumpcmd () {
     #Print each line of the command's output with the section name as the prefix to make it easier to grep the results
     #Parameters:
@@ -324,7 +440,8 @@ function dumpcmd () {
             local RESULTS="$(${1})"
         fi
 
-        echo "$RESULTS" | awk -v vSECTION=$SECTION '{ printf "%s::%s\n",vSECTION,$0; }' >> $REPORT_NAME
+        # FILTER is set by dumpcmdredacted to scrub secrets before they're written to the report
+        echo "$RESULTS" | ${FILTER:-cat} | awk -v vSECTION=$SECTION '{ printf "%s::%s\n",vSECTION,$0; }' >> $REPORT_NAME
 
     else
         comment "$COMMAND_ROOT command not found."
@@ -493,7 +610,7 @@ function System {
         comment "Cron is the task scheduler, so you can use this to get a list of (and even the contents of) the scheduled tasks running on a system.  E.g. backup jobs on database servers."
         comment "Also take a look at System_Timers below as this is the SystemD method of scheduling jobs"
         dumpcmd "crontab -l"
-        dumpfile /etc "crontab"
+        dumpfileredacted /etc "crontab"
         if [ -e /etc/cron.allow ]; then 
             comment "Cron.allow exists.  Only listed users are permitted to modify cron jobs.  If cron.allow is blank,"
             comment "then only ROOT is permitted to modify cron jobs."
@@ -505,16 +622,16 @@ function System {
             comment "File contents: /etc/cron.deny"
             dumpfile "/etc" "cron.deny"
         fi
-        dumpfile "/etc/cron.d" "*"
-        dumpfile "/etc/cron.daily" "*"
-        dumpfile "/etc/cron.weekly" "*"
-        dumpfile "/etc/cron.monthly" "*"
+        dumpfileredacted "/etc/cron.d" "*"
+        dumpfileredacted "/etc/cron.daily" "*"
+        dumpfileredacted "/etc/cron.weekly" "*"
+        dumpfileredacted "/etc/cron.monthly" "*"
     footer
 
     header "System_UserCrontab" "Background"
         comment "Per-user crontabs (if any) are created in /var/spool/cron (or /var/spool/cron/crontabs for Debian-based systems)"
         #Capture all per-user crontabs, including in one level of sub-directories
-        dumpfile "/var/spool/cron" "*" "2"
+        dumpfileredacted "/var/spool/cron" "*" "2"
     footer
 
     header "System_Timers" "Background"
@@ -725,7 +842,7 @@ function System {
     header "System_RunningProcesses" "Background"
         comment "This is as good as a blood test at the doctor's office.  If it's not listed here, the process isn't running. You can use it to find running anti-virus daemons, database"
         comment "servers, Docker containers and just about anything else."
-        dumpcmd "ps -eaux"
+        dumpcmdredacted "ps aux"
     footer
 }
 
@@ -1001,13 +1118,13 @@ function Security {
         # Look for .conf files under /etc/cb and 2 additional levels
         dumpfile "/etc/cb" "*.conf" "3"
         dumpfile "/var/lib/cb" "sensorsettings.ini"
-        dumpcmd "ps -f -C cbagentd"
+        dumpcmdredacted "ps -f -C cbagentd"
     footer
 
     header "Security_HidsCrowdStrike" "Background"
         comment "CrowdStrike is a cloud-based HIDS agent from CrowdStrike.com.  The only check is to see that the service is running"
         svcstatus "falcon-sensor"
-        dumpcmd "ps -f -C falcon"
+        dumpcmdredacted "ps -f -C falcon"
     footer
 
     header "Security_HidsOSSECConfig" "Background"
@@ -1275,13 +1392,13 @@ function Users {
     footer
 
     header "Users_Profile" "5.4.4 5.4.5"
-        comment "The Profile files in /etc and /etc/profile.d control defaults for user shells upon login.  The answers to"
-        comment "a few CIS benchmark items can be found in these files, but they might also be useful for confirming other system-wide defaults."
+        comment "The Profile files in /etc and /etc/profile.d control defaults for user shells upon login.  Only the umask (CIS 5.4.4)"
+        comment "and TMOUT (CIS 5.4.5) settings are collected.  The full files often export credentials and API tokens."
 
         #/etc/bashrc might also /etc/bash.bashrc at least on Ubuntu 20.04.  We'll grab all variations so long it has bashrc in the filename
-        dumpfile "/etc" "*bashrc*"
-        dumpfile "/etc" "profile"
-        dumpfile "/etc/profile.d" "*"
+        dumpgrep "umask\|TMOUT" "/etc" "*bashrc*"
+        dumpgrep "umask\|TMOUT" "/etc" "profile"
+        dumpgrep "umask\|TMOUT" "/etc/profile.d" "*"
     footer
 
     header "Users_SudoersConfig" "Background"
@@ -1462,8 +1579,8 @@ function K8sMaster {
         comment "Refer to the CIS benchmarks for all of the tests that can be accomplished by reviewing the kube-apiserver"
         comment "command line options.  Refer to Kubernetes documentation for default settings if not specified on the command line."
 
-        dumpcmd "ps -f -C kube-apiserver"
-        dumpfile "/etc/kubernetes/manifests" "kube-apiserver.yaml"
+        dumpcmdredacted "ps -f -C kube-apiserver"
+        dumpfileredacted "/etc/kubernetes/manifests" "kube-apiserver.yaml"
     footer
 
     header "K8sMaster_EncryptionConfig" "1.2.34"
@@ -1492,16 +1609,16 @@ function K8sMaster {
         comment "Refer to the CIS benchmarks for all of the tests that can be accomplished by reviewing the kube-controller-manager"
         comment "command line options.  Refer to Kubernetes documentation for default settings if not specified on the command line."
 
-        dumpcmd "ps -f -C kube-controller-manager"
-        dumpfile "/etc/kubernetes/manifests" "kube-controller-manager.yaml"
+        dumpcmdredacted "ps -f -C kube-controller-manager"
+        dumpfileredacted "/etc/kubernetes/manifests" "kube-controller-manager.yaml"
     footer
 
     header "K8sMaster_SchedulerParams" "1.4.x"
         comment "Refer to the CIS benchmarks for all of the tests that can be accomplished by reviewing the kube-scheduler"
         comment "command line options.  Refer to Kubernetes documentation for default settings if not specified on the command line."
 
-        dumpcmd "ps -f -C kube-scheduler"
-        dumpfile "/etc/kubernetes/manifests" "kube-scheduler.yaml"
+        dumpcmdredacted "ps -f -C kube-scheduler"
+        dumpfileredacted "/etc/kubernetes/manifests" "kube-scheduler.yaml"
     footer
 
     header "K8sMaster_EtcdParams" "2.x"
@@ -1510,8 +1627,8 @@ function K8sMaster {
 
         # The following technique will return only the line that includes only etcd and will exclude the "grep" line 
         # that usually gets sucked in.
-        dumpcmd "ps -f -C etcd"
-        dumpfile "/etc/kubernetes/manifests" "etcd.yaml"
+        dumpcmdredacted "ps -f -C etcd"
+        dumpfileredacted "/etc/kubernetes/manifests" "etcd.yaml"
     footer
 
     header "K8sMaster_Users" "3.1"
@@ -1593,7 +1710,7 @@ function K8sWorker {
         if [ -z "$STRING" ]; then
             comment "$SECTION:: $PROCESSNAME not configured with $CONFIGOPTION.  It might be using ConfigMaps.  See CIS benchmark."
         else
-            dumpcmd "ps -f -C $PROCESSNAME"
+            dumpcmdredacted "ps -f -C $PROCESSNAME"
             getSubString "*$CONFIGOPTION=" " *"
             debug "kube-proxyconfig=$SUBSTRING"
             dumpcmd "stat $SUBSTRING"
@@ -1605,7 +1722,7 @@ function K8sWorker {
         comment "The configuration options specified in the CIS 4.2.x checks might be on the command line"
         comment "or in the kubelet config file.  Both are presented below."
         
-        dumpcmd "ps -f -C kubelet"
+        dumpcmdredacted "ps -f -C kubelet"
         dumpcmd "stat /etc/kubernetes/kubelet.conf"
         redactfile "/etc/kubernetes/kubelet.conf" "(client|certificate)-.*-data:.*" "PKI Data has been REDACTED"
     footer
@@ -1651,9 +1768,9 @@ function Docker {
             dumpfile "/etc/docker" "daemon.json"
         comment "The /etc/default/docker file doesn't apply in systemd-managed systems, which is probably most"
         comment "Docker deployements on Ubuntu or Redhat. See the comment in the file."
-            dumpfile "/etc/default" "docker"
+            dumpfileredacted "/etc/default" "docker"
         comment "The dockerd command line may also include specific override parameters"
-            dumpcmd "ps -f -C dockerd"
+            dumpcmdredacted "ps -f -C dockerd"
     footer
 
     header "Docker_ContainerList" "Background"
@@ -1695,14 +1812,6 @@ function Docker {
         for n in $(docker volume ls --quiet); do
             SECTION="Docker_Volumes-$n"
             dumpcmd "docker volume inspect $n"
-        done
-    footer
-
-    header "Docker_Logs" "Background"
-        comment "We'll grab the most recent 25 lines of each active container's log file."
-        for n in $(docker container ls --quiet); do
-            SECTION="Docker_Logs-$n"
-            dumpcmd "docker logs --tail 25 --timestamps $n"
         done
     footer
 
@@ -1816,21 +1925,54 @@ function Docker {
 
     header "Docker_ContainerDetails" "4.1 4.3 4.4 5.x"
         comment "This check pulls some details from each active container, including:"
-        comment "   - The container configuration details such OS privileges, memory/CPU quotas, open ports, etc."
+        comment "   - The container configuration details such OS privileges, memory/CPU quotas, open ports, log driver, etc."
         comment "   - The user ID the container is running as (e.g. 0 = root)"
         comment "   - The packages installed within the container"
         comment "   - The list of out-of-date packages within the container"
-        comment "   - The list of processes running in the container (e.g. ps -ef)"
+        comment "   - The names of the processes running in the container (via docker top)"
         comment "   - NGinx configurations as this is a popular container we find in production stacks"
 
         echo -e "[*] Collecting container details, which could take a while on systems with lots of active containers.\n[*] Please wait..."
+
+        # Only the fields needed for the CIS Docker Benchmark.  A full "docker container inspect" also includes the container's
+        # environment variables, command line and log driver options, any of which can hold credentials.
+        # NOTE: If any field fails against Docker's typed structs, Docker retries the whole template against the raw JSON,
+        # where unset optional keys (e.g. Healthcheck) are missing and abort the output.  CpuShares is renamed in newer
+        # Docker types (29.x) and triggers that fallback, so it's collected with its own command below.
+        local DOCKER_INSPECT_FORMAT='Image={{.Config.Image}}
+User={{json .Config.User}}
+Healthcheck={{json .Config.Healthcheck}}
+AppArmorProfile={{.AppArmorProfile}}
+Privileged={{.HostConfig.Privileged}}
+CapAdd={{json .HostConfig.CapAdd}}
+CapDrop={{json .HostConfig.CapDrop}}
+SecurityOpt={{json .HostConfig.SecurityOpt}}
+ReadonlyRootfs={{.HostConfig.ReadonlyRootfs}}
+NetworkMode={{.HostConfig.NetworkMode}}
+PidMode={{.HostConfig.PidMode}}
+IpcMode={{.HostConfig.IpcMode}}
+UTSMode={{.HostConfig.UTSMode}}
+UsernsMode={{.HostConfig.UsernsMode}}
+CgroupParent={{.HostConfig.CgroupParent}}
+Memory={{.HostConfig.Memory}}
+PidsLimit={{json .HostConfig.PidsLimit}}
+RestartPolicy={{json .HostConfig.RestartPolicy}}
+PortBindings={{json .HostConfig.PortBindings}}
+PublishAllPorts={{.HostConfig.PublishAllPorts}}
+Devices={{json .HostConfig.Devices}}
+Ulimits={{json .HostConfig.Ulimits}}
+LogDriver={{.HostConfig.LogConfig.Type}}
+Mounts={{json .Mounts}}'
 
         # Iterate through the list of active/running containers
         for CONTAINER in $(docker ps --quiet); do
             CONTAINERNAME=$(docker inspect $CONTAINER --format '{{ .Name }}')
             echo -e "[*] Collecting $CONTAINERNAME"
             SECTION="Docker_ContainerDetails-$CONTAINERNAME-Config"
-            dumpcmd "docker container inspect $CONTAINER"
+            # Called directly instead of through dumpcmd, which would split the format string on its spaces
+            comment "Running: docker container inspect --format <CIS-relevant fields> $CONTAINER"
+            docker container inspect --format "$DOCKER_INSPECT_FORMAT" $CONTAINER 2>&1 | awk -v vSECTION="$SECTION" '{ printf "%s::%s\n",vSECTION,$0; }' >> $REPORT_NAME
+            docker container inspect --format 'CpuShares={{.HostConfig.CpuShares}}' $CONTAINER 2>&1 | awk -v vSECTION="$SECTION" '{ printf "%s::%s\n",vSECTION,$0; }' >> $REPORT_NAME
             
             SECTION="Docker_ContainerDetails-$CONTAINERNAME-UserID"
             CONTAINERUID=$(docker exec $CONTAINER cat /proc/1/status | grep ^Uid: | awk '{print $3}')
@@ -1855,7 +1997,9 @@ function Docker {
             dumpcmd "docker exec $CONTAINER apt-get -V -u upgrade --assume-no"
             
             SECTION="Docker_ContainerDetails-$CONTAINERNAME-RunningProcesses"
-            dumpcmd "docker exec $CONTAINER ps -ef"
+            # docker top runs the host's ps against the container's processes, so it works even when the container has no ps.
+            # comm (process name only) instead of the full command line, which can include credentials.
+            dumpcmd "docker top $CONTAINER -eo user,pid,ppid,stime,time,comm"
         
             SECTION="Docker_ContainerDetails-$CONTAINERNAME-NginxConfig"
             comment "nginx (\"Engine X\") is another popular web server, so we'll grab the config files here."
@@ -1883,7 +2027,7 @@ function Docker {
         for IMAGE in $(docker image ls --quiet); do
             IMAGENAME=$(docker inspect $IMAGE --format '{{ .RepoTags }}')
             SECTION="Docker_ImageHistory-$IMAGENAME"
-            dumpcmd "docker history $IMAGE"
+            dumpcmdredacted "docker history $IMAGE"
         done
     footer
 }
